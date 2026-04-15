@@ -23,15 +23,14 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 - ▶️ **Built-in video player** — native HTML5 player with subtitle support, autoplay, and timestamp navigation
 - 📊 **Progress tracking** — per-lesson completion, per-course progress bar, resume from exactly where you stopped
 - 📝 **Timestamped notes** — add notes tied to specific timestamps and navigate back to them instantly, even across lessons
+- 🔖 **Bookmarks** — bookmark lessons for quick access from a dedicated page
 - 🗂️ **Course library** — a clean dashboard of all your imported courses with progress at a glance
-- 🎉 **Completion celebration** — confetti animation when you finish a course
+- 🎉 **Completion celebration** — canvas particle animation when you finish a course
 - 🌙 **Themes** — light, dark, and system-sync
 
 ### 🚧 v2 — Planned
-- 🧲 **Torrent streaming** — paste a magnet link and start watching while the course downloads
 - 📄 **PDF/resource viewer** — read course attachments without leaving the app
 - 🔍 **Search** — search across all courses, lessons, and your personal notes
-- 🔖 **Bookmarks** — bookmark lessons for quick access
 
 ---
 
@@ -39,13 +38,16 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 
 | Layer | Technology |
 |---|---|
-| Desktop Framework | [Tauri v2](https://tauri.app/) |
-| Frontend | [React 19](https://react.dev/) + [TypeScript 5.8](https://www.typescriptlang.org/) |
-| Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) |
+| Desktop Framework | [Tauri 2](https://tauri.app/) |
+| Frontend | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) |
+| Routing | [React Router 7](https://reactrouter.com/) |
+| Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) + [Radix UI](https://www.radix-ui.com/) |
 | Icons | [Phosphor Icons](https://phosphoricons.com/) |
+| Charts | [Recharts](https://recharts.org/) |
+| Analytics | [PostHog](https://posthog.com/) (optional, env-configured) |
 | Backend | [Rust](https://www.rust-lang.org/) |
-| Database | SQLite via [rusqlite](https://github.com/nickel-org/rusqlite) (bundled) |
-| Build Tool | [Vite 7](https://vite.dev/) |
+| Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled) |
+| Build Tool | [Vite](https://vite.dev/) |
 
 ---
 
@@ -54,7 +56,8 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
-- [Node.js](https://nodejs.org/) (v18+)
+- [Node.js](https://nodejs.org/) (v20+)
+- Platform toolchain for Tauri — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 
 ### Development
 
@@ -75,6 +78,15 @@ npm run tauri build
 # Build universal macOS binary (Apple Silicon + Intel)
 rustup target add x86_64-apple-darwin  # one-time setup
 npm run tauri build -- --target universal-apple-darwin
+```
+
+### Environment variables (optional)
+
+PostHog analytics is disabled unless you set the following in a `.env` file at the project root. Leave them unset to run the app with analytics off.
+
+```bash
+VITE_PUBLIC_POSTHOG_PROJECT_TOKEN=your_token
+VITE_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 ```
 
 ### CI / Releases
@@ -101,18 +113,20 @@ ckourse/
 │   │   ├── course-detail/    # Video player, notes, sections
 │   │   ├── dashboard/        # Course cards, stats, empty state
 │   │   └── ui/               # Shared UI primitives
-│   ├── pages/                # Route pages
+│   ├── pages/                # Route pages (Dashboard, CourseDetail, Notes,
+│   │                         #   Bookmarks, Progress, ImportCourse, Settings)
 │   ├── hooks/                # Custom React hooks
 │   ├── lib/                  # Store, utilities, constants
+│   ├── assets/               # Lottie animations, icons
 │   └── types/                # TypeScript type definitions
 ├── src-tauri/                # Rust backend
 │   ├── src/
 │   │   ├── main.rs           # Tauri entry point
-│   │   ├── lib.rs            # Tauri command definitions
+│   │   ├── lib.rs            # Tauri app setup
 │   │   ├── db.rs             # SQLite schema and queries
 │   │   ├── parser.rs         # Course folder parser
 │   │   ├── subtitle.rs       # Subtitle file handling
-│   │   └── commands/         # Command modules (courses, lessons, notes, settings)
+│   │   └── commands/         # courses.rs, lessons.rs, notes.rs, settings.rs
 │   └── tauri.conf.json       # Tauri configuration
 └── public/                   # Static assets
 ```
