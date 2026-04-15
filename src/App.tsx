@@ -11,6 +11,12 @@ import { Settings } from "@/pages/Settings";
 import { ActivePathContext } from "@/hooks/usePageVisible";
 import { sectionMemory } from "@/hooks/useSectionMemory";
 import { SettingsContext, useSettingsProvider } from "@/hooks/useSettings";
+import {
+  UpdaterContext,
+  useUpdaterProvider,
+  useStartupUpdateCheck,
+} from "@/hooks/useUpdater";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 function routeKey(pathname: string, search: string): string {
   if (pathname.startsWith("/course/")) {
@@ -95,12 +101,17 @@ function KeepAliveRoutes() {
 
 function App() {
   const settingsCtx = useSettingsProvider();
+  const updaterCtx = useUpdaterProvider();
+  useStartupUpdateCheck(updaterCtx);
 
   return (
     <SettingsContext.Provider value={settingsCtx}>
-      <AppShell>
-        <KeepAliveRoutes />
-      </AppShell>
+      <UpdaterContext.Provider value={updaterCtx}>
+        <AppShell>
+          <KeepAliveRoutes />
+        </AppShell>
+        <UpdateBanner />
+      </UpdaterContext.Provider>
     </SettingsContext.Provider>
   );
 }

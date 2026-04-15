@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import type { LibraryStats } from "@/types";
 import { getLibraryStats, deleteAllData } from "@/lib/store";
 import { EASE_OUT } from "@/lib/constants";
+import { useUpdater } from "@/hooks/useUpdater";
+import { getVersion } from "@tauri-apps/api/app";
 
 interface ToggleProps {
   checked: boolean;
@@ -281,6 +283,81 @@ interface SettingsProps {
   className?: string;
 }
 
+function UpdatesSection({ index }: { index: number }) {
+  const updater = useUpdater();
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+  }, []);
+
+  const isChecking = updater.status === "checking";
+  const isDownloading = updater.status === "downloading";
+  const isReady = updater.status === "ready";
+  const hasUpdate = updater.status === "available" || isDownloading || isReady;
+  const percent = Math.round(updater.progress * 100);
+
+  let buttonLabel = "Check for updates";
+  if (isChecking) buttonLabel = "Checking…";
+  else if (isReady) buttonLabel = "Restart to update";
+  else if (isDownloading) buttonLabel = `Downloading ${percent}%`;
+  else if (updater.status === "available") buttonLabel = `Install v${updater.version}`;
+
+  const onClick = () => {
+    if (hasUpdate) updater.install();
+    else updater.check();
+  };
+
+  let description = appVersion ? `Current version v${appVersion}` : "Check for new versions";
+  if (updater.status === "up-to-date") description = `You're on the latest version (v${appVersion})`;
+  else if (updater.status === "available") description = `Version ${updater.version} is available`;
+  else if (updater.status === "error") description = updater.error ?? "Update check failed";
+
+  return (
+    <SectionCard
+      title="Updates"
+      icon={<ArrowsClockwise className="size-4 text-info" weight="bold" />}
+      index={index}
+    >
+      <SettingRow
+        icon={<ArrowsClockwise className={cn("size-4", isChecking && "animate-spin")} />}
+        label="App updates"
+        description={description}
+      >
+        <button
+          onClick={onClick}
+          disabled={isChecking || isDownloading}
+          className={cn(
+            "shrink-0 rounded-lg px-4 py-2",
+            "font-sans text-sm font-semibold transition-colors",
+            hasUpdate
+              ? "bg-primary text-primary-foreground hover:opacity-90"
+              : "border border-border bg-secondary text-foreground hover:bg-secondary/70",
+            (isChecking || isDownloading) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          {buttonLabel}
+        </button>
+      </SettingRow>
+      {isDownloading && (
+        <div className="px-2 pb-2">
+          <div className="h-1 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full bg-primary transition-[width] duration-200"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {updater.status === "available" && updater.notes && (
+        <div className="mx-2 mb-2 max-h-32 overflow-y-auto rounded-lg bg-secondary/50 px-3 py-2 font-sans text-xs whitespace-pre-wrap text-muted-foreground">
+          {updater.notes}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 export function Settings({ className }: SettingsProps) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
@@ -446,10 +523,12 @@ export function Settings({ className }: SettingsProps) {
           </div>
         </SectionCard>
 
+        <UpdatesSection index={2} />
+
         <SectionCard
           title="Danger Zone"
           icon={<WarningCircle className="size-4 text-destructive" weight="bold" />}
-          index={2}
+          index={3}
         >
           <div className="flex items-center justify-between gap-4 rounded-lg px-2 py-3">
             <div className="flex items-center gap-3">

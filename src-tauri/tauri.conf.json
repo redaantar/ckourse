@@ -50,6 +50,15 @@
     "macOS": {
       "signingIdentity": null,
       "entitlements": null
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/redaantar/ckourse/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_PUBLIC_KEY_FROM_TAURI_SIGNER_GENERATE"
     }
   }
 }
