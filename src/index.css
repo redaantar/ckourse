@@ -1,0 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@500&display=swap');
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-sans: 'DM Sans', sans-serif;
+    --font-heading: 'Syne', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
+    --radius-3xl: calc(var(--radius) + 12px);
+    --radius-4xl: calc(var(--radius) + 16px);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-info: var(--info);
+    --color-success: var(--success);
+}
+
+:root {
+    --radius: 0.625rem;
+    /* Backgrounds */
+    --background: #0A0A0A;
+    --foreground: #EDEDED;
+    --card: #111214;
+    --card-foreground: #EDEDED;
+    --popover: #1A1C1F;
+    --popover-foreground: #EDEDED;
+    /* Accent — Electric Lime */
+    --primary: #C8F135;
+    --primary-foreground: #0A0A0A;
+    /* Secondary */
+    --secondary: #1A1C1F;
+    --secondary-foreground: #EDEDED;
+    /* Muted */
+    --muted: #111214;
+    --muted-foreground: #7A7D85;
+    /* Accent */
+    --accent: #C8F135;
+    --accent-foreground: #0A0A0A;
+    /* Status */
+    --destructive: #FF6B6B;
+    --info: #5B9CF6;
+    --success: #C8F135;
+    /* Border / Input / Ring */
+    --border: #252729;
+    --input: #252729;
+    --ring: #C8F135;
+    /* Charts */
+    --chart-1: #C8F135;
+    --chart-2: #5B9CF6;
+    --chart-3: #FF6B6B;
+    --chart-4: #A8CC1A;
+    --chart-5: #7A7D85;
+    /* Sidebar */
+    --sidebar: #111214;
+    --sidebar-foreground: #EDEDED;
+    --sidebar-primary: #C8F135;
+    --sidebar-primary-foreground: #0A0A0A;
+    --sidebar-accent: #1A1C1F;
+    --sidebar-accent-foreground: #EDEDED;
+    --sidebar-border: #252729;
+    --sidebar-ring: #C8F135;
+    --gradient-spot: rgba(200, 241, 53, 0.10);
+}
+
+.light {
+    --background: #F5F5F5;
+    --foreground: #1A1A1A;
+    --card: #FFFFFF;
+    --card-foreground: #1A1A1A;
+    --popover: #FFFFFF;
+    --popover-foreground: #1A1A1A;
+    --primary: #8AB400;
+    --primary-foreground: #FFFFFF;
+    --secondary: #E8E8E8;
+    --secondary-foreground: #1A1A1A;
+    --muted: #F0F0F0;
+    --muted-foreground: #6B6E76;
+    --accent: #8AB400;
+    --accent-foreground: #FFFFFF;
+    --destructive: #E54D4D;
+    --info: #4A87E0;
+    --success: #8AB400;
+    --border: #D9DBDF;
+    --input: #D9DBDF;
+    --ring: #8AB400;
+    --chart-1: #8AB400;
+    --chart-2: #4A87E0;
+    --chart-3: #E54D4D;
+    --chart-4: #6E9900;
+    --chart-5: #6B6E76;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #1A1A1A;
+    --sidebar-primary: #8AB400;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #F0F0F0;
+    --sidebar-accent-foreground: #1A1A1A;
+    --sidebar-border: #D9DBDF;
+    --sidebar-ring: #8AB400;
+    --gradient-spot: rgba(138, 180, 0, 0.07);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-color: var(--muted-foreground) transparent;
+    scrollbar-width: thin;
+    user-select: none;
+    -webkit-user-select: none;
+    }
+  html {
+    background-color: #0A0A0A;
+    }
+  html.light {
+    background-color: #F5F5F5;
+    }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-weight: 400;
+    }
+}
+
+/* Squircle (iOS-style superellipse) */
+.squircle {
+  clip-path: url(#squircle);
+}
+
+/* Subtle squircle — less rounded, for cards and wider elements */
+.squircle-subtle {
+  clip-path: url(#squircle-subtle);
+}
+
+/* Apple-style spring easing */
+.ease-apple {
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Note editor — contentEditable placeholder + allow text selection */
+.note-editable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.note-editable:empty::before {
+  content: attr(data-placeholder);
+  pointer-events: none;
+  color: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+/* Rich note content styles */
+.note-content b { font-weight: 600; }
+.note-content i { font-style: italic; }
+.note-content u { text-decoration: underline; }
+.note-content s { text-decoration: line-through; }
+
+/* Inline timestamp pill — used in both editor and rendered notes */
+.note-timestamp {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  cursor: pointer;
+  vertical-align: baseline;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Card entrance animation */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
