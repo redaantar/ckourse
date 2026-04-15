@@ -51,7 +51,13 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 
 ---
 
-## Getting Started
+## Download
+
+Pre-built installers for macOS and Windows are available on the [Releases page](https://github.com/redaantar/ckourse/releases).
+
+---
+
+## Building from Source
 
 ### Prerequisites
 
@@ -69,16 +75,39 @@ cd ckourse
 # Install frontend dependencies
 npm install
 
-# Run in development mode
+# Run in development mode (macOS / Windows / Linux)
 npm run tauri dev
 
-# Build for production
+# Build for production (produces installers for the current OS)
 npm run tauri build
+```
 
-# Build universal macOS binary (Apple Silicon + Intel)
+#### Platform-specific build targets
+
+**macOS** — build a universal binary (Apple Silicon + Intel):
+
+```bash
 rustup target add x86_64-apple-darwin  # one-time setup
 npm run tauri build -- --target universal-apple-darwin
 ```
+
+Output: `.dmg` and `.app` under `src-tauri/target/universal-apple-darwin/release/bundle/`.
+
+**Windows** — build an MSI and NSIS installer:
+
+```powershell
+npm run tauri build
+```
+
+Output: `.msi` and `.exe` under `src-tauri\target\release\bundle\`.
+
+**Linux** — build `.deb` / `.AppImage`:
+
+```bash
+npm run tauri build
+```
+
+Output: `.deb` and `.AppImage` under `src-tauri/target/release/bundle/`.
 
 ### Environment variables (optional)
 
@@ -89,17 +118,9 @@ VITE_PUBLIC_POSTHOG_PROJECT_TOKEN=your_token
 VITE_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 ```
 
-### CI / Releases
+### CI
 
-The project includes a GitHub Actions workflow (`.github/workflows/build.yml`) that builds for macOS (universal) and Windows automatically.
-
-```bash
-# When ready to release:
-git tag v1.0.0
-git push --tags
-```
-
-This creates a **draft GitHub Release** with `.dmg` (macOS) and `.msi`/`.exe` (Windows) installers attached. You can also trigger builds manually from the Actions tab.
+CI builds macOS (universal) and Windows installers on tag push — see [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ---
 
@@ -135,22 +156,9 @@ ckourse/
 
 ## Contributing
 
-Ckourse is in early development. Contributions, issues, and feature requests are welcome.
+Ckourse is in early development. Contributions, issues, and feature requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code conventions, and commit style, and the [Code of Conduct](CODE_OF_CONDUCT.md) for community expectations.
 
-1. Fork the repository
-2. Create your branch: `git checkout -b feature/your-feature`
-3. Make your changes
-4. Run the app locally to verify: `npm run tauri dev`
-5. Commit your changes: `git commit -m 'Add your feature'`
-6. Push and open a Pull Request
-
-### Notes for contributors
-
-- Use named exports only
-- Use `cn()` from `src/lib/utils.ts` for conditional class merging
-- Use `@/` import alias for project imports
-- Icons come from `@phosphor-icons/react`
-- Fonts: DM Sans (body), Syne (headings), JetBrains Mono (code)
+To report a security vulnerability, see [SECURITY.md](SECURITY.md).
 
 ---
 
