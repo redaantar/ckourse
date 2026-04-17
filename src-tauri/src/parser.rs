@@ -385,7 +385,7 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
     let has_numbers = sections.iter().any(|s| {
         s.lessons
             .iter()
-            .any(|l| extract_leading_number(&l.title).is_some())
+            .any(|l| extract_leading_number(&l.title).is_some() || extract_embedded_number(&l.title).is_some())
     });
 
     if !has_numbers {
@@ -485,15 +485,23 @@ fn build_lessons_from_files(
 ) -> (Vec<ParsedLesson>, bool) {
     let mut sorted_videos: Vec<&&FileEntry> = videos.iter().collect();
 
-    // Determine if we have numbers
-    let has_numbers = sorted_videos
+    // Determine if we have numbers (leading or embedded like "Lecture 3")
+    let has_leading = sorted_videos
         .iter()
         .any(|v| extract_leading_number(&v.name).is_some());
+    let has_embedded = sorted_videos
+        .iter()
+        .any(|v| extract_embedded_number(&v.name).is_some());
+    let has_numbers = has_leading || has_embedded;
 
     if has_numbers {
         sorted_videos.sort_by(|a, b| {
-            let na = extract_leading_number(&a.name).unwrap_or(u32::MAX);
-            let nb = extract_leading_number(&b.name).unwrap_or(u32::MAX);
+            let na = extract_leading_number(&a.name)
+                .or_else(|| extract_embedded_number(&a.name))
+                .unwrap_or(u32::MAX);
+            let nb = extract_leading_number(&b.name)
+                .or_else(|| extract_embedded_number(&b.name))
+                .unwrap_or(u32::MAX);
             na.cmp(&nb).then_with(|| a.name.cmp(&b.name))
         });
     } else {
@@ -511,8 +519,12 @@ fn build_lessons_from_files(
     let mut sorted_subtitles: Vec<&&FileEntry> = subtitles.iter().collect();
     if has_numbers {
         sorted_subtitles.sort_by(|a, b| {
-            let na = extract_leading_number(&a.name).unwrap_or(u32::MAX);
-            let nb = extract_leading_number(&b.name).unwrap_or(u32::MAX);
+            let na = extract_leading_number(&a.name)
+                .or_else(|| extract_embedded_number(&a.name))
+                .unwrap_or(u32::MAX);
+            let nb = extract_leading_number(&b.name)
+                .or_else(|| extract_embedded_number(&b.name))
+                .unwrap_or(u32::MAX);
             na.cmp(&nb).then_with(|| a.name.cmp(&b.name))
         });
     } else {
@@ -589,6 +601,14 @@ fn build_lessons_from_files(
             subtitles: matched_subs,
             resources: lesson_resources,
         });
+    }
+
+    // Strip common prefix/suffix across all lesson titles in this batch
+    // (e.g., "CS50x 2026 - " prefix and " - CS50" suffix)
+    let mut titles: Vec<String> = lessons.iter().map(|l| l.title.clone()).collect();
+    strip_common_affixes(&mut titles);
+    for (lesson, title) in lessons.iter_mut().zip(titles.into_iter()) {
+        lesson.title = title;
     }
 
     (lessons, used_positional)
@@ -697,6 +717,8 @@ fn classify_resource_known(ext: &str, _name: &str) -> bool {
 fn extract_sort_key(name: &str) -> SortKey {
     if let Some(num) = extract_leading_number(name) {
         SortKey::Numeric(num)
+    } else if let Some(num) = extract_embedded_number(name) {
+        SortKey::Numeric(num)
     } else {
         SortKey::Alphabetic(name.to_lowercase())
     }
@@ -714,7 +736,7 @@ fn extract_leading_number(name: &str) -> Option<u32> {
     }
 
     // Skip "Section", "Chapter", "Part", "Lesson" prefix
-    let prefixes = ["section", "chapter", "part", "lesson", "module", "week", "day"];
+    let prefixes = ["section", "chapter", "part", "lesson", "lecture", "module", "week", "day"];
     let mut start = s;
     for prefix in &prefixes {
         if let Some(rest) = s.to_lowercase().strip_prefix(prefix) {
@@ -755,6 +777,30 @@ fn extract_leading_number(name: &str) -> Option<u32> {
     }
 
     Some(num)
+}
+
+/// Search for keyword+number patterns anywhere in the name.
+/// Handles filenames like "CS50x 2026 - Lecture 3 - Algorithms" where the
+/// sortable number isn't at the start.
+fn extract_embedded_number(name: &str) -> Option<u32> {
+    let lower = name.to_lowercase();
+    let keywords = [
+        "section", "chapter", "part", "lesson", "lecture", "module", "week", "day", "episode",
+        "ep", "ep.", "vol", "vol.",
+    ];
+
+    for keyword in &keywords {
+        if let Some(pos) = lower.find(keyword) {
+            let after = &name[pos + keyword.len()..];
+            let after = after.trim_start_matches(|c: char| c == ' ' || c == '.' || c == '_' || c == '-' || c == ':');
+            let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() {
+                return digits.parse().ok();
+            }
+        }
+    }
+
+    None
 }
 
 fn video_base_name(filename: &str) -> String {
@@ -899,6 +945,9 @@ fn clean_display_name(name: &str) -> String {
         }
     }
 
+    // Strip resolution/quality tags like (720p), (1080p), [4K], (HD), etc.
+    result = strip_quality_tags(&result);
+
     result = strip_leading_number(&result);
 
     // Strip platform ID prefixes (long numeric + underscore)
@@ -949,7 +998,7 @@ fn strip_leading_number(name: &str) -> String {
     }
 
     // Handle "Section X", "Chapter X" etc. prefixes
-    let prefixes = ["section", "chapter", "part", "lesson", "module", "week", "day"];
+    let prefixes = ["section", "chapter", "part", "lesson", "lecture", "module", "week", "day"];
     let lower = s.to_lowercase();
     for prefix in &prefixes {
         if lower.starts_with(prefix) {
@@ -997,26 +1046,132 @@ fn regex_strip_platform_id(name: &str) -> Option<String> {
     None
 }
 
+/// Given a list of titles, detect and strip common prefix and suffix shared by all.
+/// Only strips at word/delimiter boundaries to avoid cutting mid-word.
+/// Requires at least 3 titles to activate (avoids false positives on small sets).
+fn strip_common_affixes(titles: &mut [String]) {
+    if titles.len() < 3 {
+        return;
+    }
+
+    // Find common prefix
+    let first = &titles[0];
+    let mut prefix_len = first.len();
+    for title in titles.iter().skip(1) {
+        prefix_len = prefix_len.min(title.len());
+        for (i, (a, b)) in first.chars().zip(title.chars()).enumerate() {
+            if a != b || i >= prefix_len {
+                prefix_len = i;
+                break;
+            }
+        }
+    }
+
+    // Snap prefix to a structural separator boundary (" - ", " – ", " _ ")
+    // to avoid cutting in the middle of meaningful words like "Lecture"
+    if prefix_len > 0 {
+        let prefix_str = &first[..prefix_len];
+        let separators = [" - ", " – ", " _ "];
+        let mut best_boundary = 0;
+        for sep in &separators {
+            if let Some(pos) = prefix_str.rfind(sep) {
+                let boundary = pos + sep.len();
+                if boundary > best_boundary {
+                    best_boundary = boundary;
+                }
+            }
+        }
+        prefix_len = best_boundary;
+    }
+
+    // Find common suffix
+    let first_rev: Vec<char> = first.chars().rev().collect();
+    let mut suffix_len = first.len();
+    for title in titles.iter().skip(1) {
+        let rev: Vec<char> = title.chars().rev().collect();
+        suffix_len = suffix_len.min(rev.len());
+        for i in 0..suffix_len {
+            if i >= first_rev.len() || i >= rev.len() || first_rev[i] != rev[i] {
+                suffix_len = i;
+                break;
+            }
+        }
+    }
+
+    // Snap suffix to a structural separator boundary
+    if suffix_len > 0 {
+        let suffix_start = first.len() - suffix_len;
+        let suffix_str = &first[suffix_start..];
+        let separators = [" - ", " – ", " _ "];
+        let mut best_boundary = 0;
+        for sep in &separators {
+            if let Some(pos) = suffix_str.find(sep) {
+                // suffix_len = everything from this separator onwards
+                let candidate = suffix_str.len() - pos;
+                if candidate > best_boundary {
+                    best_boundary = candidate;
+                }
+            }
+        }
+        suffix_len = best_boundary;
+    }
+
+    // Apply stripping — only if the result is non-empty for all titles
+    for title in titles.iter_mut() {
+        let end = title.len().saturating_sub(suffix_len);
+        if prefix_len < end {
+            let stripped = title[prefix_len..end].trim().to_string();
+            if !stripped.is_empty() {
+                *title = stripped;
+            }
+        }
+    }
+}
+
+fn strip_quality_tags(name: &str) -> String {
+    let quality_tags = [
+        "(720p)", "(1080p)", "(480p)", "(360p)", "(240p)", "(2160p)", "(4K)", "(4k)",
+        "(HD)", "(FHD)", "(UHD)", "(hd)", "(fhd)", "(uhd)",
+        "[720p]", "[1080p]", "[480p]", "[360p]", "[240p]", "[2160p]", "[4K]", "[4k]",
+        "[HD]", "[FHD]", "[UHD]", "[hd]", "[fhd]", "[uhd]",
+    ];
+    let mut result = name.to_string();
+    for tag in &quality_tags {
+        result = result.replace(tag, "");
+    }
+    result
+}
+
 fn apply_title_case(text: &str) -> String {
     text.split_whitespace()
         .map(|word| {
-            // Check if it's an acronym (preserve as-is)
-            if ACRONYMS.iter().any(|a| a.eq_ignore_ascii_case(word)) {
-                // Find the matching acronym to use its canonical form
-                ACRONYMS
+            // Strip trailing punctuation for acronym matching, then reattach
+            let alpha_end = word
+                .char_indices()
+                .rev()
+                .find(|(_, c)| c.is_alphanumeric())
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(word.len());
+            let (core, trailing) = word.split_at(alpha_end);
+
+            // Check if the core is an acronym (preserve canonical form)
+            if ACRONYMS.iter().any(|a| a.eq_ignore_ascii_case(core)) {
+                let canonical = ACRONYMS
                     .iter()
-                    .find(|a| a.eq_ignore_ascii_case(word))
+                    .find(|a| a.eq_ignore_ascii_case(core))
                     .map(|a| a.to_string())
-                    .unwrap_or(word.to_string())
-            } else if word.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) && word.len() > 1 {
+                    .unwrap_or(core.to_string());
+                format!("{}{}", canonical, trailing)
+            } else if core.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) && core.len() > 1 {
                 // ALL CAPS word that's not a known acronym — title case it
-                let mut chars = word.chars();
+                let mut chars = core.chars();
                 match chars.next() {
                     Some(c) => {
                         format!(
-                            "{}{}",
+                            "{}{}{}",
                             c.to_uppercase(),
-                            chars.as_str().to_lowercase()
+                            chars.as_str().to_lowercase(),
+                            trailing
                         )
                     }
                     None => word.to_string(),
@@ -1288,4 +1443,153 @@ fn detect_thumbnail(files: &[FileEntry]) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- extract_leading_number ---
+
+    #[test]
+    fn leading_number_plain() {
+        assert_eq!(extract_leading_number("01 - Introduction"), Some(1));
+        assert_eq!(extract_leading_number("12. Arrays"), Some(12));
+    }
+
+    #[test]
+    fn leading_number_with_lecture_prefix() {
+        assert_eq!(extract_leading_number("Lecture 3 - Algorithms"), Some(3));
+        assert_eq!(extract_leading_number("lecture 10 - The End"), Some(10));
+    }
+
+    #[test]
+    fn leading_number_no_match() {
+        assert_eq!(extract_leading_number("CS50x 2026 - Lecture 0"), None);
+        assert_eq!(extract_leading_number("Introduction"), None);
+    }
+
+    // --- extract_embedded_number ---
+
+    #[test]
+    fn embedded_number_lecture() {
+        assert_eq!(
+            extract_embedded_number("CS50x 2026 - Lecture 0 - Scratch - CS50 (720p)"),
+            Some(0)
+        );
+        assert_eq!(
+            extract_embedded_number("CS50x 2026 - Lecture 10 - The End - CS50 (720p)"),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn embedded_number_episode() {
+        assert_eq!(
+            extract_embedded_number("The Great Course - Episode 5 - Something"),
+            Some(5)
+        );
+        assert_eq!(extract_embedded_number("Ep.3 - Title"), Some(3));
+    }
+
+    #[test]
+    fn embedded_number_none() {
+        assert_eq!(extract_embedded_number("Just a plain title"), None);
+    }
+
+    // --- strip_quality_tags ---
+
+    #[test]
+    fn quality_tags_removed() {
+        assert_eq!(strip_quality_tags("Video (720p)"), "Video ");
+        assert_eq!(strip_quality_tags("Video [1080p]"), "Video ");
+        assert_eq!(strip_quality_tags("Video (4K)"), "Video ");
+        assert_eq!(strip_quality_tags("No tag here"), "No tag here");
+    }
+
+    // --- strip_common_affixes ---
+
+    #[test]
+    fn common_affixes_cs50_style() {
+        let mut titles = vec![
+            "CS50x 2026 - Lecture 0 - Scratch - CS50".to_string(),
+            "CS50x 2026 - Lecture 1 - C - CS50".to_string(),
+            "CS50x 2026 - Lecture 2 - Arrays - CS50".to_string(),
+            "CS50x 2026 - Lecture 3 - Algorithms - CS50".to_string(),
+        ];
+        strip_common_affixes(&mut titles);
+        assert_eq!(titles[0], "Lecture 0 - Scratch");
+        assert_eq!(titles[1], "Lecture 1 - C");
+        assert_eq!(titles[2], "Lecture 2 - Arrays");
+        assert_eq!(titles[3], "Lecture 3 - Algorithms");
+    }
+
+    #[test]
+    fn common_affixes_no_strip_when_too_few() {
+        let mut titles = vec!["A - Foo".to_string(), "A - Bar".to_string()];
+        strip_common_affixes(&mut titles);
+        // Should not strip with only 2 titles
+        assert_eq!(titles[0], "A - Foo");
+        assert_eq!(titles[1], "A - Bar");
+    }
+
+    #[test]
+    fn common_affixes_prefix_only() {
+        let mut titles = vec![
+            "Course Name - Part 1".to_string(),
+            "Course Name - Part 2".to_string(),
+            "Course Name - Part 3".to_string(),
+        ];
+        strip_common_affixes(&mut titles);
+        assert_eq!(titles[0], "Part 1");
+        assert_eq!(titles[1], "Part 2");
+        assert_eq!(titles[2], "Part 3");
+    }
+
+    // --- clean_display_name ---
+
+    #[test]
+    fn clean_display_name_cs50() {
+        let result = clean_display_name("CS50x 2026 - Lecture 0 - Scratch - CS50 (720p).mp4");
+        // Should strip extension, resolution tag, then remaining hyphens become spaces
+        assert!(!result.contains("720p"), "Should strip resolution tag, got: {}", result);
+        assert!(!result.contains(".mp4"), "Should strip extension, got: {}", result);
+    }
+
+    #[test]
+    fn clean_display_name_preserves_acronyms() {
+        let result = clean_display_name("08 - HTML, CSS, JavaScript.mp4");
+        assert!(result.contains("HTML"), "got: {}", result);
+        assert!(result.contains("CSS"), "got: {}", result);
+    }
+
+    // --- sort_key with embedded numbers ---
+
+    #[test]
+    fn sort_key_embedded_lecture() {
+        let key = extract_sort_key("CS50x 2026 - Lecture 3 - Algorithms");
+        assert!(matches!(key, SortKey::Numeric(3)));
+    }
+
+    #[test]
+    fn sort_key_leading_wins_over_embedded() {
+        // "02 - Lecture 5" should use leading 2, not embedded 5
+        let key = extract_sort_key("02 - Lecture 5 - Something");
+        assert!(matches!(key, SortKey::Numeric(2)));
+    }
+
+    // --- strip_leading_number with lecture ---
+
+    #[test]
+    fn strip_leading_lecture() {
+        let result = strip_leading_number("Lecture 3 - Algorithms");
+        assert_eq!(result, "Algorithms");
+    }
+
+    #[test]
+    fn strip_leading_lecture_no_title_after() {
+        // "Lecture 3" with nothing after should keep original
+        let result = strip_leading_number("Lecture 3");
+        assert_eq!(result, "Lecture 3");
+    }
 }
