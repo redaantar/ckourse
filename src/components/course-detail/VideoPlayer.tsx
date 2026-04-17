@@ -206,7 +206,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const preferredSubLangRef = useRef<string | null>(null);
   const playbackSpeedRef = useRef(playbackSpeed);
 
-  const videoSrc = lesson ? convertFileSrc(lesson.videoPath) : undefined;
+  const videoSrc = lesson ? convertFileSrc(lesson.videoPath, "stream") : undefined;
 
   // Reset state when lesson changes
   useEffect(() => {
@@ -697,6 +697,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         onProgress={handleProgress}
         onClick={togglePlay}
         onDoubleClick={handleDoubleClick}
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget;
+          console.log("[video] loadedmetadata", {
+            src: v.currentSrc,
+            duration: v.duration,
+            readyState: v.readyState,
+            videoWidth: v.videoWidth,
+            videoHeight: v.videoHeight,
+          });
+        }}
+        onStalled={() => console.warn("[video] stalled", videoSrc)}
+        onAbort={() => console.warn("[video] abort", videoSrc)}
+        onError={(e) => {
+          const v = e.currentTarget;
+          const err = v.error;
+          const codeName = err
+            ? ["", "MEDIA_ERR_ABORTED", "MEDIA_ERR_NETWORK", "MEDIA_ERR_DECODE", "MEDIA_ERR_SRC_NOT_SUPPORTED"][err.code] ?? `code=${err.code}`
+            : "unknown";
+          console.error("[video] error", {
+            src: v.currentSrc,
+            code: err?.code,
+            codeName,
+            message: err?.message,
+            networkState: v.networkState,
+            readyState: v.readyState,
+          });
+        }}
       />
 
       {activeCueText && (

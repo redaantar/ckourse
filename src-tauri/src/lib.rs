@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod parser;
 mod subtitle;
+mod video_protocol;
 
 use db::DbState;
 use tauri::Manager;
@@ -9,6 +10,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol(video_protocol::SCHEME, video_protocol::handle)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
