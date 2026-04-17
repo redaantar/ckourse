@@ -20,6 +20,13 @@ const DESCRIPTION_NAMES: &[&str] = &["readme.md", "description.txt", "about.txt"
 const CODE_FOLDER_NAMES: &[&str] = &[
     "code", "starter", "solution", "exercise", "exercises", "src", "source",
 ];
+const SUBTITLE_FOLDER_NAMES: &[&str] = &[
+    "subs", "sub", "subtitles", "subtitle", "captions",
+];
+const SAMPLE_VIDEO_STEMS: &[&str] = &[
+    "trailer", "preview", "promo", "sample", "teaser", "intro_promo", "course_preview",
+    "course_trailer", "advertisement", "ad",
+];
 
 const ACRONYMS: &[&str] = &[
     "HTML", "CSS", "API", "REST", "SQL", "JSON", "XML", "HTTP", "HTTPS", "URL", "URI", "DOM",
@@ -176,7 +183,7 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
     let thumbnail_path = detect_thumbnail(&root_files);
 
     // Classify root files
-    let root_videos: Vec<&FileEntry> = root_files.iter().filter(|f| is_video(&f.extension)).collect();
+    let root_videos: Vec<&FileEntry> = root_files.iter().filter(|f| is_video(&f.extension) && !is_sample_video(&f.name)).collect();
     let root_subtitles: Vec<&FileEntry> = root_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
     let root_other: Vec<&FileEntry> = root_files
         .iter()
@@ -195,10 +202,17 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
     let mut course_resources: Vec<ParsedResource> = Vec::new();
     let mut used_positional_subtitle = false;
 
-    // Determine pattern
+    // Collect subtitles from subtitle subfolders (Subs/, Subtitles/, etc.)
+    let sub_folder_subs = collect_subtitle_folder_files(&root_folders);
+    let sub_folder_sub_refs: Vec<&FileEntry> = sub_folder_subs.iter().collect();
+    let mut all_root_subtitles: Vec<&FileEntry> = root_subtitles.clone();
+    all_root_subtitles.extend(sub_folder_sub_refs.iter().copied());
+
+    // Determine pattern — exclude subtitle-only folders from structure detection
     let has_root_videos = !root_videos.is_empty();
-    let has_subfolders = !root_folders.is_empty();
-    let subfolders_have_videos = root_folders.iter().any(|f| folder_has_videos(&f.path));
+    let content_folders: Vec<&FolderEntry> = root_folders.iter().filter(|f| !is_subtitle_folder(&f.name)).collect();
+    let has_subfolders = !content_folders.is_empty();
+    let subfolders_have_videos = content_folders.iter().any(|f| folder_has_videos(&f.path));
 
     if !has_root_videos && !subfolders_have_videos {
         return Err("No video files found in this folder".to_string());
@@ -206,7 +220,7 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
 
     if has_root_videos && !has_subfolders {
         // Pattern 1: Flat
-        let (lessons, positional) = build_lessons_from_files(&root_videos, &root_subtitles, &root_other, folder_path);
+        let (lessons, positional) = build_lessons_from_files(&root_videos, &all_root_subtitles, &root_other, folder_path);
         used_positional_subtitle = positional;
         sections = vec![ParsedSection {
             title: title.clone(),
@@ -216,7 +230,7 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
     } else if !has_root_videos && has_subfolders && subfolders_have_videos {
         // Pattern 2 or 3: Section folders
         sections = Vec::new();
-        let mut sorted_folders = root_folders;
+        let mut sorted_folders: Vec<&FolderEntry> = content_folders.clone();
         sorted_folders.sort_by(|a, b| a.sort_key.cmp(&b.sort_key));
 
         for (i, folder) in sorted_folders.iter().enumerate() {
@@ -225,25 +239,33 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
                 Err(_) => continue,
             };
 
-            let sub_videos: Vec<&FileEntry> = sub_files.iter().filter(|f| is_video(&f.extension)).collect();
-            let sub_subtitles: Vec<&FileEntry> = sub_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+            let sub_videos: Vec<&FileEntry> = sub_files.iter().filter(|f| is_video(&f.extension) && !is_sample_video(&f.name)).collect();
+            let mut sub_subtitles: Vec<&FileEntry> = sub_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+            let sub_folder_subs = collect_subtitle_folder_files(&sub_folders);
+            let sub_folder_sub_refs: Vec<&FileEntry> = sub_folder_subs.iter().collect();
+            sub_subtitles.extend(sub_folder_sub_refs.iter().copied());
             let sub_other: Vec<&FileEntry> = sub_files
                 .iter()
                 .filter(|f| !is_video(&f.extension) && !is_subtitle(&f.extension) && !is_hidden(&f.name) && !is_metadata_file(&f.extension))
                 .collect();
 
-            if sub_videos.is_empty() && !sub_folders.is_empty() {
+            let content_sub_folders: Vec<&FolderEntry> = sub_folders.iter().filter(|f| !is_subtitle_folder(&f.name)).collect();
+
+            if sub_videos.is_empty() && !content_sub_folders.is_empty() {
                 // Pattern 3: Two levels — subsections contain videos
-                let mut sub_sorted = sub_folders;
+                let mut sub_sorted = content_sub_folders;
                 sub_sorted.sort_by(|a, b| a.sort_key.cmp(&b.sort_key));
 
                 for (j, sub_folder) in sub_sorted.iter().enumerate() {
-                    let (ss_files, _) = match read_directory(&sub_folder.path) {
+                    let (ss_files, ss_folders) = match read_directory(&sub_folder.path) {
                         Ok(r) => r,
                         Err(_) => continue,
                     };
-                    let ss_videos: Vec<&FileEntry> = ss_files.iter().filter(|f| is_video(&f.extension)).collect();
-                    let ss_subtitles: Vec<&FileEntry> = ss_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+                    let ss_videos: Vec<&FileEntry> = ss_files.iter().filter(|f| is_video(&f.extension) && !is_sample_video(&f.name)).collect();
+                    let mut ss_subtitles: Vec<&FileEntry> = ss_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+                    let ss_folder_subs = collect_subtitle_folder_files(&ss_folders);
+                    let ss_folder_sub_refs: Vec<&FileEntry> = ss_folder_subs.iter().collect();
+                    ss_subtitles.extend(ss_folder_sub_refs.iter().copied());
                     let ss_other: Vec<&FileEntry> = ss_files
                         .iter()
                         .filter(|f| !is_video(&f.extension) && !is_subtitle(&f.extension) && !is_hidden(&f.name) && !is_metadata_file(&f.extension))
@@ -301,7 +323,7 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
         sections = Vec::new();
 
         // Root videos become a virtual section
-        let (root_lessons, positional) = build_lessons_from_files(&root_videos, &root_subtitles, &root_other, folder_path);
+        let (root_lessons, positional) = build_lessons_from_files(&root_videos, &all_root_subtitles, &root_other, folder_path);
         if positional {
             used_positional_subtitle = true;
         }
@@ -312,17 +334,20 @@ pub fn parse_folder(folder_path: &Path) -> Result<ParsedCourse, String> {
         });
 
         // Subfolders become sections
-        let mut sorted_folders = root_folders;
+        let mut sorted_folders: Vec<&FolderEntry> = content_folders.clone();
         sorted_folders.sort_by(|a, b| a.sort_key.cmp(&b.sort_key));
 
         for (i, folder) in sorted_folders.iter().enumerate() {
-            let (sub_files, _) = match read_directory(&folder.path) {
+            let (sub_files, sub_folders) = match read_directory(&folder.path) {
                 Ok(r) => r,
                 Err(_) => continue,
             };
 
-            let sub_videos: Vec<&FileEntry> = sub_files.iter().filter(|f| is_video(&f.extension)).collect();
-            let sub_subtitles: Vec<&FileEntry> = sub_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+            let sub_videos: Vec<&FileEntry> = sub_files.iter().filter(|f| is_video(&f.extension) && !is_sample_video(&f.name)).collect();
+            let mut sub_subtitles: Vec<&FileEntry> = sub_files.iter().filter(|f| is_subtitle(&f.extension)).collect();
+            let sub_folder_subs = collect_subtitle_folder_files(&sub_folders);
+            let sub_folder_sub_refs: Vec<&FileEntry> = sub_folder_subs.iter().collect();
+            sub_subtitles.extend(sub_folder_sub_refs.iter().copied());
             let sub_other: Vec<&FileEntry> = sub_files
                 .iter()
                 .filter(|f| !is_video(&f.extension) && !is_subtitle(&f.extension) && !is_hidden(&f.name) && !is_metadata_file(&f.extension))
@@ -532,6 +557,29 @@ fn build_lessons_from_files(
     }
 
     let mut used_positional = false;
+
+    // Resolve ffprobe binary once
+    let ffprobe_bin = find_bundled_bin("ffprobe")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ffprobe".to_string());
+
+    // Probe durations and embedded subtitles in parallel using scoped threads
+    let video_paths: Vec<&Path> = sorted_videos.iter().map(|v| v.path.as_path()).collect();
+    let probe_results: Vec<(u64, Vec<ParsedSubtitle>)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = video_paths
+            .iter()
+            .map(|path| {
+                let bin = &ffprobe_bin;
+                scope.spawn(move || {
+                    let duration = probe_video_duration(path);
+                    let embedded = probe_embedded_subtitles(path, bin);
+                    (duration, embedded)
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
     let mut lessons = Vec::new();
 
     for (i, video) in sorted_videos.iter().enumerate() {
@@ -583,21 +631,14 @@ fn build_lessons_from_files(
             }
         }
 
-        let ffprobe_bin = find_bundled_bin("ffprobe")
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "ffprobe".to_string());
-
-        let duration_secs = probe_video_duration(&video.path);
-
-        // Add embedded (soft) subtitle tracks from the video container
-        let embedded_subs = probe_embedded_subtitles(&video.path, &ffprobe_bin);
-        matched_subs.extend(embedded_subs);
+        let (duration_secs, embedded_subs) = &probe_results[i];
+        matched_subs.extend(embedded_subs.clone());
 
         lessons.push(ParsedLesson {
             title: clean_title,
             order: i,
             video_path: video.path.to_string_lossy().to_string(),
-            duration_secs,
+            duration_secs: *duration_secs,
             subtitles: matched_subs,
             resources: lesson_resources,
         });
@@ -646,13 +687,49 @@ fn is_code_folder(name: &str) -> bool {
     CODE_FOLDER_NAMES.contains(&name.to_lowercase().as_str())
 }
 
+fn is_subtitle_folder(name: &str) -> bool {
+    SUBTITLE_FOLDER_NAMES.contains(&name.to_lowercase().as_str())
+}
+
+/// Check if a video file is a sample/trailer/promo that should be excluded from lessons.
+fn is_sample_video(name: &str) -> bool {
+    let stem = name
+        .rsplit_once('.')
+        .map(|(n, _)| n)
+        .unwrap_or(name)
+        .to_lowercase();
+    // Clean the stem the same way we clean for matching — strip leading numbers, underscores, hyphens
+    let cleaned = stem
+        .trim_start_matches(|c: char| c.is_ascii_digit() || c == ' ' || c == '-' || c == '_' || c == '.');
+    SAMPLE_VIDEO_STEMS.contains(&cleaned)
+        || SAMPLE_VIDEO_STEMS.contains(&stem.as_str())
+}
+
+/// Collect subtitle files from known subtitle subfolders (Subs/, Subtitles/, etc.)
+fn collect_subtitle_folder_files(folders: &[FolderEntry]) -> Vec<FileEntry> {
+    let mut subtitle_files = Vec::new();
+    for folder in folders {
+        if is_subtitle_folder(&folder.name) {
+            if let Ok((files, _)) = read_directory(&folder.path) {
+                for file in files {
+                    if is_subtitle(&file.extension) {
+                        subtitle_files.push(file);
+                    }
+                }
+            }
+        }
+    }
+    subtitle_files
+}
+
 fn folder_has_videos(path: &Path) -> bool {
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries.flatten() {
             let p = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
             if p.is_file() {
                 if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                    if is_video(&ext.to_lowercase()) {
+                    if is_video(&ext.to_lowercase()) && !is_sample_video(&name) {
                         return true;
                     }
                 }
@@ -662,9 +739,10 @@ fn folder_has_videos(path: &Path) -> bool {
                 if let Ok(sub_entries) = fs::read_dir(&p) {
                     for sub_entry in sub_entries.flatten() {
                         let sp = sub_entry.path();
+                        let sname = sub_entry.file_name().to_string_lossy().to_string();
                         if sp.is_file() {
                             if let Some(ext) = sp.extension().and_then(|e| e.to_str()) {
-                                if is_video(&ext.to_lowercase()) {
+                                if is_video(&ext.to_lowercase()) && !is_sample_video(&sname) {
                                     return true;
                                 }
                             }
@@ -1591,5 +1669,128 @@ mod tests {
         // "Lecture 3" with nothing after should keep original
         let result = strip_leading_number("Lecture 3");
         assert_eq!(result, "Lecture 3");
+    }
+
+    // --- is_sample_video ---
+
+    #[test]
+    fn sample_video_detection() {
+        assert!(is_sample_video("trailer.mp4"));
+        assert!(is_sample_video("preview.mp4"));
+        assert!(is_sample_video("promo.mkv"));
+        assert!(is_sample_video("sample.avi"));
+        assert!(is_sample_video("TRAILER.MP4"));
+        assert!(is_sample_video("course_preview.mp4"));
+    }
+
+    #[test]
+    fn sample_video_with_leading_number() {
+        assert!(is_sample_video("00 - trailer.mp4"));
+        assert!(is_sample_video("01_sample.mp4"));
+    }
+
+    #[test]
+    fn non_sample_videos() {
+        assert!(!is_sample_video("01 - Introduction.mp4"));
+        assert!(!is_sample_video("Lecture 3 - Algorithms.mp4"));
+        assert!(!is_sample_video("trailer_park_boys.mp4")); // not an exact stem match
+    }
+
+    // --- is_subtitle_folder ---
+
+    #[test]
+    fn subtitle_folder_detection() {
+        assert!(is_subtitle_folder("Subs"));
+        assert!(is_subtitle_folder("subs"));
+        assert!(is_subtitle_folder("Subtitles"));
+        assert!(is_subtitle_folder("SUBTITLES"));
+        assert!(is_subtitle_folder("captions"));
+        assert!(!is_subtitle_folder("code"));
+        assert!(!is_subtitle_folder("Section 1"));
+    }
+
+    // --- Integration: parse_folder with subtitle subfolder ---
+
+    #[test]
+    fn parse_folder_with_subtitle_subfolder() {
+        use std::fs;
+
+        let dir = std::env::temp_dir().join("ckourse_test_subs_folder");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // Create dummy video files (empty — duration will be 0)
+        fs::write(dir.join("01 - Intro.mp4"), b"").unwrap();
+        fs::write(dir.join("02 - Basics.mp4"), b"").unwrap();
+
+        // Create subtitle subfolder with matching subs
+        let subs_dir = dir.join("Subs");
+        fs::create_dir_all(&subs_dir).unwrap();
+        fs::write(subs_dir.join("01 - Intro.srt"), b"1\n00:00:00,000 --> 00:00:01,000\nHello").unwrap();
+        fs::write(subs_dir.join("02 - Basics.srt"), b"1\n00:00:00,000 --> 00:00:01,000\nWorld").unwrap();
+
+        let result = parse_folder(&dir).unwrap();
+        assert_eq!(result.total_video_count, 2);
+
+        // Check that subtitles were matched from the subfolder
+        let lesson1 = &result.sections[0].lessons[0];
+        let lesson2 = &result.sections[0].lessons[1];
+        let has_file_sub = |l: &ParsedLesson| l.subtitles.iter().any(|s| !s.path.contains("#subtitle:"));
+        assert!(has_file_sub(lesson1), "Lesson 1 should have subtitle from Subs/ folder");
+        assert!(has_file_sub(lesson2), "Lesson 2 should have subtitle from Subs/ folder");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // --- Integration: sample videos filtered out ---
+
+    #[test]
+    fn parse_folder_filters_samples() {
+        use std::fs;
+
+        let dir = std::env::temp_dir().join("ckourse_test_sample_filter");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        fs::write(dir.join("01 - Intro.mp4"), b"").unwrap();
+        fs::write(dir.join("02 - Basics.mp4"), b"").unwrap();
+        fs::write(dir.join("trailer.mp4"), b"").unwrap();
+        fs::write(dir.join("preview.mp4"), b"").unwrap();
+
+        let result = parse_folder(&dir).unwrap();
+        assert_eq!(result.total_video_count, 2, "Should exclude trailer and preview");
+
+        let titles: Vec<&str> = result.sections[0].lessons.iter().map(|l| l.title.as_str()).collect();
+        assert!(!titles.iter().any(|t| t.to_lowercase().contains("trailer")));
+        assert!(!titles.iter().any(|t| t.to_lowercase().contains("preview")));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // --- Integration: subtitle-only subfolder doesn't break pattern detection ---
+
+    #[test]
+    fn subs_folder_doesnt_trigger_pattern4() {
+        use std::fs;
+
+        let dir = std::env::temp_dir().join("ckourse_test_subs_pattern");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        fs::write(dir.join("01 - Intro.mp4"), b"").unwrap();
+        fs::write(dir.join("02 - Basics.mp4"), b"").unwrap();
+        fs::write(dir.join("03 - Advanced.mp4"), b"").unwrap();
+
+        // Subs folder — should NOT turn this into Pattern 4 (mixed)
+        let subs_dir = dir.join("Subtitles");
+        fs::create_dir_all(&subs_dir).unwrap();
+        fs::write(subs_dir.join("01 - Intro.srt"), b"sub").unwrap();
+
+        let result = parse_folder(&dir).unwrap();
+        // Pattern 1 = single section with course title
+        assert_eq!(result.sections.len(), 1, "Should be Pattern 1 (flat), not Pattern 4 (mixed)");
+        assert_eq!(result.total_video_count, 3);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
