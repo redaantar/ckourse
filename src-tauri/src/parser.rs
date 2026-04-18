@@ -520,14 +520,17 @@ fn build_lessons_from_files(
     let has_numbers = has_leading || has_embedded;
 
     if has_numbers {
+        // Two-tier sort: unnumbered files first (intro/overview content),
+        // then numbered files in numeric order
         sorted_videos.sort_by(|a, b| {
-            let na = extract_leading_number(&a.name)
-                .or_else(|| extract_embedded_number(&a.name))
-                .unwrap_or(u32::MAX);
-            let nb = extract_leading_number(&b.name)
-                .or_else(|| extract_embedded_number(&b.name))
-                .unwrap_or(u32::MAX);
-            na.cmp(&nb).then_with(|| a.name.cmp(&b.name))
+            let na = extract_leading_number(&a.name).or_else(|| extract_embedded_number(&a.name));
+            let nb = extract_leading_number(&b.name).or_else(|| extract_embedded_number(&b.name));
+            match (na, nb) {
+                (Some(a_num), Some(b_num)) => a_num.cmp(&b_num).then_with(|| a.name.cmp(&b.name)),
+                (None, Some(_)) => std::cmp::Ordering::Less,    // unnumbered before numbered
+                (Some(_), None) => std::cmp::Ordering::Greater, // numbered after unnumbered
+                (None, None) => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
         });
     } else {
         sorted_videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -544,13 +547,14 @@ fn build_lessons_from_files(
     let mut sorted_subtitles: Vec<&&FileEntry> = subtitles.iter().collect();
     if has_numbers {
         sorted_subtitles.sort_by(|a, b| {
-            let na = extract_leading_number(&a.name)
-                .or_else(|| extract_embedded_number(&a.name))
-                .unwrap_or(u32::MAX);
-            let nb = extract_leading_number(&b.name)
-                .or_else(|| extract_embedded_number(&b.name))
-                .unwrap_or(u32::MAX);
-            na.cmp(&nb).then_with(|| a.name.cmp(&b.name))
+            let na = extract_leading_number(&a.name).or_else(|| extract_embedded_number(&a.name));
+            let nb = extract_leading_number(&b.name).or_else(|| extract_embedded_number(&b.name));
+            match (na, nb) {
+                (Some(a_num), Some(b_num)) => a_num.cmp(&b_num).then_with(|| a.name.cmp(&b.name)),
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, None) => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
         });
     } else {
         sorted_subtitles.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
