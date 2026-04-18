@@ -4,6 +4,7 @@ import { HashRouter } from "react-router-dom";
 import { PostHogProvider } from "@posthog/react";
 import App from "./App";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Toaster } from "@/components/ui/sonner";
 import "./index.css";
 
 
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <HashRouter>
           <App />
         </HashRouter>
+        <Toaster />
       </ErrorBoundary>
     </PostHogProvider>
   </StrictMode>

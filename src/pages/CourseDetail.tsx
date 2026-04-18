@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useContext } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ActivePathContext } from "@/hooks/usePageVisible";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { toast } from "sonner";
 import {
   CheckCircleIcon as CheckCircle,
   ClockIcon as Clock,
@@ -366,8 +367,11 @@ function CourseDetailInner({
       try {
         await toggleLessonCompleted(lessonId);
         await onDataChange();
-      } catch {
-        // DB error — UI will reflect stale state until next refresh
+      } catch (err) {
+        console.error("toggleLessonCompleted failed", err);
+        toast.error("Couldn't update lesson", {
+          description: "Try again in a moment.",
+        });
       }
     },
     [onDataChange],
@@ -378,8 +382,11 @@ function CourseDetailInner({
       try {
         await toggleFavorite(lessonId);
         await onDataChange();
-      } catch {
-        // DB error — UI will reflect stale state until next refresh
+      } catch (err) {
+        console.error("toggleFavorite failed", err);
+        toast.error("Couldn't update favorite", {
+          description: "Try again in a moment.",
+        });
       }
     },
     [onDataChange],
@@ -391,8 +398,9 @@ function CourseDetailInner({
       try {
         await toggleLessonCompleted(activeLesson.id);
         await onDataChange();
-      } catch {
-        // Auto-complete failed silently
+      } catch (err) {
+        // Background auto-complete; no toast since it wasn't user-initiated.
+        console.error("auto-complete on video end failed", err);
       }
     }
   }, [activeLesson, onDataChange]);
@@ -419,8 +427,12 @@ function CourseDetailInner({
       );
       setNotes((prev) => [note, ...prev]);
       setShowEditor(false);
-    } catch {
-      // Note operation failed — keep editor open so user doesn't lose content
+    } catch (err) {
+      // Keep editor open so the user doesn't lose their content.
+      console.error("addNote failed", err);
+      toast.error("Couldn't save note", {
+        description: "Your content is still in the editor.",
+      });
     }
   }
 
@@ -435,8 +447,12 @@ function CourseDetailInner({
         ),
       );
       setEditingNoteId(null);
-    } catch {
-      // Keep edit mode open on failure
+    } catch (err) {
+      // Keep edit mode open so the user can retry.
+      console.error("updateNote failed", err);
+      toast.error("Couldn't update note", {
+        description: "Your changes weren't saved.",
+      });
     }
   }
 
@@ -444,8 +460,11 @@ function CourseDetailInner({
     try {
       await storeDeleteNote(noteId);
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
-    } catch {
-      // Note delete failed — state unchanged
+    } catch (err) {
+      console.error("deleteNote failed", err);
+      toast.error("Couldn't delete note", {
+        description: "Try again in a moment.",
+      });
     }
   }
 
@@ -497,8 +516,12 @@ function CourseDetailInner({
   const handleOpenResource = async (path: string) => {
     try {
       await openPath(path);
-    } catch {
-      // silently fail if file doesn't exist
+    } catch (err) {
+      // Expected when the file was moved/deleted outside the app.
+      console.debug("openPath failed", err);
+      toast.error("Couldn't open resource", {
+        description: "The file may have been moved or deleted.",
+      });
     }
   };
 
