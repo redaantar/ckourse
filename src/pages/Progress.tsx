@@ -169,7 +169,7 @@ function ActivityCalendar({ activityDates }: { activityDates: Set<string> }) {
           {dayLabels.map((label, i) => (
             <div
               key={i}
-              className="flex h-3 w-3 items-center justify-center font-mono text-[7px] leading-none text-muted-foreground/40"
+              className="flex w-3 flex-1 items-center justify-center font-mono text-[7px] leading-none text-muted-foreground/40"
             >
               {i % 2 === 1 ? label : ""}
             </div>
