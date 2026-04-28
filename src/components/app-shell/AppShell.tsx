@@ -7,6 +7,7 @@ import {
   CaretRightIcon as CaretRight,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { reportError } from "@/lib/posthog";
 import { useTheme } from "@/hooks/useTheme";
 import { AnimatedThemeToggler } from "@/components/ui/animatedThemeToggle";
 import logoDark from "@/assets/icons/logo-dark.svg";
@@ -39,10 +40,17 @@ function AppShellInner({ children }: AppShellProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
+    const promise = document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch((err: unknown) => {
+        const name = err instanceof DOMException ? err.name : undefined;
+        if (name === "AbortError" || name === "NotAllowedError") return;
+        reportError(err, "AppShell.toggleFullscreen", {
+          entering: !document.fullscreenElement,
+        });
+      });
     }
   }, []);
 
