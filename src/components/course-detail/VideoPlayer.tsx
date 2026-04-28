@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { formatVideoTime } from "@/lib/format";
 import type { Lesson, Subtitle, VideoPlayerHandle } from "@/types";
 import { getSubtitleVtt } from "@/lib/store";
+import { reportError } from "@/lib/posthog";
 import { EASE_OUT } from "@/lib/constants";
 
 interface VideoPlayerProps {
@@ -51,6 +52,80 @@ interface VideoPlayerProps {
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const AUTO_SKIP_SECONDS = 5;
+
+// Extract the file extension from a path or URL (lowercased, no leading dot).
+function getFileExtension(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  const clean = path.split(/[?#]/)[0];
+  const idx = clean.lastIndexOf(".");
+  if (idx < 0 || idx === clean.length - 1) return undefined;
+  return clean.slice(idx + 1).toLowerCase();
+}
+
+const MEDIA_ERROR_NAMES = [
+  "",
+  "MEDIA_ERR_ABORTED",
+  "MEDIA_ERR_NETWORK",
+  "MEDIA_ERR_DECODE",
+  "MEDIA_ERR_SRC_NOT_SUPPORTED",
+];
+
+interface SafePlayContext {
+  lessonId?: number;
+  videoPath?: string;
+  trigger: "autoplay" | "togglePlay" | "keyboard" | "replay";
+}
+
+// HTMLMediaElement.play() returns a Promise that rejects with NotSupportedError,
+// NotAllowedError, AbortError, etc. Catch it explicitly so it doesn't surface as
+// an unhandled promise rejection, and report to PostHog with media diagnostics.
+// AbortError is normal (e.g. play() interrupted by a new load) and not reported.
+function safePlay(video: HTMLVideoElement | null, ctx: SafePlayContext) {
+  if (!video) return;
+  const result = video.play();
+  if (!result || typeof result.catch !== "function") return;
+  result.catch((err: unknown) => {
+    const name = err instanceof DOMException ? err.name : undefined;
+    if (name === "AbortError") return;
+    const mediaErr = video.error;
+    reportError(err, "VideoPlayer.safePlay", {
+      trigger: ctx.trigger,
+      lessonId: ctx.lessonId,
+      videoPath: ctx.videoPath,
+      videoExtension: getFileExtension(ctx.videoPath ?? video.currentSrc),
+      currentSrc: video.currentSrc,
+      readyState: video.readyState,
+      networkState: video.networkState,
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      duration: Number.isFinite(video.duration) ? video.duration : null,
+      currentTime: video.currentTime,
+      muted: video.muted,
+      volume: video.volume,
+      playbackRate: video.playbackRate,
+      mediaErrorCode: mediaErr?.code,
+      mediaErrorName: mediaErr ? MEDIA_ERROR_NAMES[mediaErr.code] : undefined,
+      mediaErrorMessage: mediaErr?.message,
+      userAgent: navigator.userAgent,
+    });
+  });
+}
+
+// Wrap a fullscreen / PiP promise so DOMException rejections get reported
+// instead of becoming unhandled rejections. NotAllowedError is benign (user
+// gesture missing or denied) so it's filtered out.
+function safeDomPromise(
+  promise: Promise<unknown> | undefined,
+  source: string,
+  extra?: Record<string, unknown>,
+) {
+  if (!promise || typeof promise.catch !== "function") return;
+  promise.catch((err: unknown) => {
+    const name = err instanceof DOMException ? err.name : undefined;
+    if (name === "AbortError" || name === "NotAllowedError") return;
+    reportError(err, source, extra);
+  });
+}
 
 const SUB_SIZE_OPTIONS = [
   { label: "Small", value: 14 },
@@ -253,7 +328,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       video.playbackRate = playbackSpeedRef.current;
       video.volume = defaultVolume / 100;
       if (autoPlay) {
-        video.play();
+        safePlay(video, {
+          trigger: "autoplay",
+          lessonId: lesson.id,
+          videoPath: lesson.videoPath,
+        });
       }
     };
 
@@ -338,7 +417,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         case "Escape":
           if (document.fullscreenElement) {
             e.preventDefault();
-            document.exitFullscreen();
+            safeDomPromise(
+              document.exitFullscreen(),
+              "VideoPlayer.exitFullscreen",
+              { trigger: "escape" },
+            );
           }
           break;
         case " ":
@@ -346,8 +429,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
           e.preventDefault();
           if (hasEnded) {
             handleReplay();
+          } else if (v.paused) {
+            safePlay(v, {
+              trigger: "keyboard",
+              lessonId: lesson?.id,
+              videoPath: lesson?.videoPath,
+            });
           } else {
-            v.paused ? v.play() : v.pause();
+            v.pause();
           }
           resetHideTimer();
           break;
@@ -433,10 +522,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       handleReplay();
       return;
     }
-    videoRef.current.paused
-      ? videoRef.current.play()
-      : videoRef.current.pause();
-  }, [hasEnded]);
+    if (videoRef.current.paused) {
+      safePlay(videoRef.current, {
+        trigger: "togglePlay",
+        lessonId: lesson?.id,
+        videoPath: lesson?.videoPath,
+      });
+    } else {
+      videoRef.current.pause();
+    }
+  }, [hasEnded, lesson?.id, lesson?.videoPath]);
 
   const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
@@ -489,9 +584,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   // Fullscreen via DOM Fullscreen API (enabled by macos-private-api on macOS)
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      safeDomPromise(
+        document.exitFullscreen(),
+        "VideoPlayer.exitFullscreen",
+        { trigger: "toggle" },
+      );
     } else {
-      containerRef.current?.requestFullscreen();
+      safeDomPromise(
+        containerRef.current?.requestFullscreen(),
+        "VideoPlayer.requestFullscreen",
+        { trigger: "toggle" },
+      );
     }
   }, []);
 
@@ -504,16 +607,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     return () => document.removeEventListener("fullscreenchange", handleChange);
   }, []);
 
-  const togglePiP = useCallback(async () => {
+  const togglePiP = useCallback(() => {
     if (!videoRef.current) return;
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        await videoRef.current.requestPictureInPicture();
-      }
-    } catch {
-      // PiP not supported or denied
+    if (document.pictureInPictureElement) {
+      safeDomPromise(
+        document.exitPictureInPicture(),
+        "VideoPlayer.exitPiP",
+      );
+    } else {
+      safeDomPromise(
+        videoRef.current.requestPictureInPicture(),
+        "VideoPlayer.requestPiP",
+        { videoSrc: videoRef.current.currentSrc },
+      );
     }
   }, []);
 
@@ -538,9 +644,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const handleReplay = useCallback(() => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = 0;
-    videoRef.current.play();
+    safePlay(videoRef.current, {
+      trigger: "replay",
+      lessonId: lesson?.id,
+      videoPath: lesson?.videoPath,
+    });
     setHasEnded(false);
-  }, []);
+  }, [lesson?.id, lesson?.videoPath]);
 
   const handleDoubleClick = useCallback(() => {
     toggleFullscreen();

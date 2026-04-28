@@ -19,6 +19,7 @@ import {
   HeartIcon as Heart,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { reportError } from "@/lib/posthog";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import type { VideoPlayerHandle } from "@/types";
@@ -273,7 +274,12 @@ function CourseDetailInner({
   useEffect(() => {
     return () => {
       if (activeLesson && videoTimeRef.current > 0) {
-        saveLessonPosition(activeLesson.id, videoTimeRef.current);
+        saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+          reportError(err, "CourseDetail.saveOnUnmount", {
+            lessonId: activeLesson.id,
+            position: videoTimeRef.current,
+          }),
+        );
       }
     };
   }, [activeLesson?.id]);
@@ -283,7 +289,12 @@ function CourseDetailInner({
     if (!isVisible) {
       videoPlayerRef.current?.pause();
       if (activeLesson && videoTimeRef.current > 0) {
-        saveLessonPosition(activeLesson.id, videoTimeRef.current);
+        saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+          reportError(err, "CourseDetail.saveOnHide", {
+            lessonId: activeLesson.id,
+            position: videoTimeRef.current,
+          }),
+        );
       }
     }
   }, [isVisible, activeLesson?.id]);
@@ -318,7 +329,13 @@ function CourseDetailInner({
 
   useEffect(() => {
     if (activeLesson) {
-      getLessonSubtitles(activeLesson.id).then(setSubtitles).catch(() => setSubtitles([]));
+      const lessonId = activeLesson.id;
+      getLessonSubtitles(lessonId)
+        .then(setSubtitles)
+        .catch((err) => {
+          setSubtitles([]);
+          reportError(err, "CourseDetail.getLessonSubtitles", { lessonId });
+        });
     } else {
       setSubtitles([]);
     }
@@ -328,7 +345,12 @@ function CourseDetailInner({
     async (lesson: Lesson) => {
       // Save position of current lesson before switching
       if (activeLesson && videoTimeRef.current > 0) {
-        saveLessonPosition(activeLesson.id, videoTimeRef.current);
+        saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+          reportError(err, "CourseDetail.handleSelectLesson", {
+            lessonId: activeLesson.id,
+            position: videoTimeRef.current,
+          }),
+        );
       }
 
       setActiveLessonId(lesson.id);
@@ -347,7 +369,12 @@ function CourseDetailInner({
         setAutoPlay(false);
       }
       if (!playing && activeLesson && videoTimeRef.current > 0) {
-        saveLessonPosition(activeLesson.id, videoTimeRef.current);
+        saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+          reportError(err, "CourseDetail.handlePlayStateChange", {
+            lessonId: activeLesson.id,
+            position: videoTimeRef.current,
+          }),
+        );
       }
     },
     [activeLesson?.id],
@@ -360,7 +387,12 @@ function CourseDetailInner({
       const next = allLessons[idx + 1];
       // Save position of current lesson before switching
       if (videoTimeRef.current > 0) {
-        saveLessonPosition(activeLesson.id, videoTimeRef.current);
+        saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+          reportError(err, "CourseDetail.handleNextLesson", {
+            lessonId: activeLesson.id,
+            position: videoTimeRef.current,
+          }),
+        );
       }
       setActiveLessonId(next.id);
       setVideoTime(0);
@@ -378,6 +410,7 @@ function CourseDetailInner({
         await onDataChange();
       } catch (err) {
         console.error("toggleLessonCompleted failed", err);
+        reportError(err, "CourseDetail.handleToggleComplete", { lessonId });
         toast.error("Couldn't update lesson", {
           description: "Try again in a moment.",
         });
@@ -393,6 +426,7 @@ function CourseDetailInner({
         await onDataChange();
       } catch (err) {
         console.error("toggleFavorite failed", err);
+        reportError(err, "CourseDetail.handleToggleFavorite", { lessonId });
         toast.error("Couldn't update favorite", {
           description: "Try again in a moment.",
         });
@@ -410,6 +444,9 @@ function CourseDetailInner({
       } catch (err) {
         // Background auto-complete; no toast since it wasn't user-initiated.
         console.error("auto-complete on video end failed", err);
+        reportError(err, "CourseDetail.handleVideoEnded.autoComplete", {
+          lessonId: activeLesson.id,
+        });
       }
     }
   }, [activeLesson, onDataChange]);
@@ -419,7 +456,14 @@ function CourseDetailInner({
       if (!activeLesson) return;
       const mins = Math.round(duration / 60);
       if (mins > 0 && mins !== activeLesson.duration) {
-        updateLessonDuration(activeLesson.id, mins).then(onDataChange);
+        updateLessonDuration(activeLesson.id, mins)
+          .then(onDataChange)
+          .catch((err) =>
+            reportError(err, "CourseDetail.handleDurationChange", {
+              lessonId: activeLesson.id,
+              durationMinutes: mins,
+            }),
+          );
       }
     },
     [activeLesson, onDataChange],
@@ -439,6 +483,11 @@ function CourseDetailInner({
     } catch (err) {
       // Keep editor open so the user doesn't lose their content.
       console.error("addNote failed", err);
+      reportError(err, "CourseDetail.handleAddNote", {
+        courseId: course.id,
+        lessonId: activeLesson.id,
+        contentLength: content.length,
+      });
       toast.error("Couldn't save note", {
         description: "Your content is still in the editor.",
       });
@@ -459,6 +508,10 @@ function CourseDetailInner({
     } catch (err) {
       // Keep edit mode open so the user can retry.
       console.error("updateNote failed", err);
+      reportError(err, "CourseDetail.handleEditNote", {
+        noteId,
+        contentLength: content.length,
+      });
       toast.error("Couldn't update note", {
         description: "Your changes weren't saved.",
       });
@@ -471,6 +524,7 @@ function CourseDetailInner({
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
     } catch (err) {
       console.error("deleteNote failed", err);
+      reportError(err, "CourseDetail.handleDeleteNote", { noteId });
       toast.error("Couldn't delete note", {
         description: "Try again in a moment.",
       });
@@ -503,7 +557,12 @@ function CourseDetailInner({
 
     // Save current position
     if (activeLesson && videoTimeRef.current > 0) {
-      saveLessonPosition(activeLesson.id, videoTimeRef.current);
+      saveLessonPosition(activeLesson.id, videoTimeRef.current).catch((err) =>
+        reportError(err, "CourseDetail.confirmTimestampNav", {
+          lessonId: activeLesson.id,
+          position: videoTimeRef.current,
+        }),
+      );
     }
 
     setActiveLessonId(lessonId);
@@ -526,8 +585,12 @@ function CourseDetailInner({
     try {
       await openPath(path);
     } catch (err) {
-      // Expected when the file was moved/deleted outside the app.
+      // Expected when the file was moved/deleted outside the app — debug-level.
       console.debug("openPath failed", err);
+      reportError(err, "CourseDetail.handleOpenResource", {
+        path,
+        severity: "expected",
+      });
       toast.error("Couldn't open resource", {
         description: "The file may have been moved or deleted.",
       });
