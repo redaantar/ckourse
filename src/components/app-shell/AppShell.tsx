@@ -196,7 +196,7 @@ export function AppShell({ children }: AppShellProps) {
         </aside>
 
         <main
-          className="flex-1 overflow-y-auto rounded-tl-2xl bg-background px-6 py-8"
+          className="flex-1 overflow-y-auto rounded-tl-2xl bg-background px-6 py-8 [scrollbar-gutter:stable]"
           style={{
             backgroundImage:
               "radial-gradient(ellipse 80% 60% at 10% 0%, var(--gradient-spot) 0%, transparent 70%)",

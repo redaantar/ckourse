@@ -17,14 +17,42 @@ import {
   CaretDownIcon as CaretDown,
   CaretRightIcon as CaretRight,
   FileIcon as File,
+  DotsSixVerticalIcon as DotsSixVertical,
+  PencilSimpleIcon as PencilSimple,
 } from "@phosphor-icons/react";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import loadingAnimation from "@/assets/lotties/loading.json";
 import { cn } from "@/lib/utils";
 import { SquircleButton } from "@/components/ui/SquircleButton";
-import type { CourseCategory, ParsedCourse, ParsedSection } from "@/types";
+import type { CourseCategory, ParsedCourse, ParsedSection, ParsedLesson } from "@/types";
 import { selectCourseFolder, parseCourseFolder } from "@/lib/courseParser";
 import { importCourse, getCustomCategories, addCustomCategory, deleteCustomCategory } from "@/lib/store";
 import { EASE_OUT } from "@/lib/constants";
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 11);
+}
+
+interface StructureIds {
+  sections: string[];
+  lessons: string[][];
+}
 
 const builtinCategories: { value: CourseCategory; label: string }[] = [
   { value: "frontend", label: "Frontend" },
@@ -61,6 +89,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsedCourse, setParsedCourse] = useState<ParsedCourse | null>(null);
+  const [structureIds, setStructureIds] = useState<StructureIds>({ sections: [], lessons: [] });
   const [isImporting, setIsImporting] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -80,6 +109,10 @@ export function ImportCourse({ className }: ImportCourseProps) {
     try {
       const result = await parseCourseFolder(folderPath);
       setParsedCourse(result);
+      setStructureIds({
+        sections: result.sections.map(() => makeId()),
+        lessons: result.sections.map((s) => s.lessons.map(() => makeId())),
+      });
       setTitle(result.title);
       setStep("configure");
     } catch (err) {
@@ -121,6 +154,56 @@ export function ImportCourse({ className }: ImportCourseProps) {
         }
       }
     }
+  };
+
+  const reorderSections = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    setParsedCourse((prev) => {
+      if (!prev) return prev;
+      const sections = arrayMove(prev.sections, fromIdx, toIdx).map((s, i) => ({ ...s, order: i }));
+      return { ...prev, sections };
+    });
+    setStructureIds((prev) => ({
+      sections: arrayMove(prev.sections, fromIdx, toIdx),
+      lessons: arrayMove(prev.lessons, fromIdx, toIdx),
+    }));
+  };
+
+  const reorderLessons = (sectionIdx: number, fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    setParsedCourse((prev) => {
+      if (!prev) return prev;
+      const sections = prev.sections.map((s, i) => {
+        if (i !== sectionIdx) return s;
+        const lessons = arrayMove(s.lessons, fromIdx, toIdx).map((l, j) => ({ ...l, order: j }));
+        return { ...s, lessons };
+      });
+      return { ...prev, sections };
+    });
+    setStructureIds((prev) => ({
+      sections: prev.sections,
+      lessons: prev.lessons.map((arr, i) => (i === sectionIdx ? arrayMove(arr, fromIdx, toIdx) : arr)),
+    }));
+  };
+
+  const renameSection = (sectionIdx: number, newTitle: string) => {
+    setParsedCourse((prev) => {
+      if (!prev) return prev;
+      const sections = prev.sections.map((s, i) => (i === sectionIdx ? { ...s, title: newTitle } : s));
+      return { ...prev, sections };
+    });
+  };
+
+  const renameLesson = (sectionIdx: number, lessonIdx: number, newTitle: string) => {
+    setParsedCourse((prev) => {
+      if (!prev) return prev;
+      const sections = prev.sections.map((s, i) => {
+        if (i !== sectionIdx) return s;
+        const lessons = s.lessons.map((l, j) => (j === lessonIdx ? { ...l, title: newTitle } : l));
+        return { ...s, lessons };
+      });
+      return { ...prev, sections };
+    });
   };
 
   const handleImport = async () => {
@@ -202,6 +285,11 @@ export function ImportCourse({ className }: ImportCourseProps) {
       ) : parsedCourse ? (
         <ConfigureStep
           course={parsedCourse}
+          structureIds={structureIds}
+          onReorderSections={reorderSections}
+          onReorderLessons={reorderLessons}
+          onRenameSection={renameSection}
+          onRenameLesson={renameLesson}
           title={title}
           onTitleChange={setTitle}
           author={author}
@@ -329,6 +417,11 @@ function FolderSelectStep({
 
 function ConfigureStep({
   course,
+  structureIds,
+  onReorderSections,
+  onReorderLessons,
+  onRenameSection,
+  onRenameLesson,
   title,
   onTitleChange,
   author,
@@ -342,6 +435,11 @@ function ConfigureStep({
   onImport,
 }: {
   course: ParsedCourse;
+  structureIds: StructureIds;
+  onReorderSections: (from: number, to: number) => void;
+  onReorderLessons: (sectionIdx: number, from: number, to: number) => void;
+  onRenameSection: (sectionIdx: number, newTitle: string) => void;
+  onRenameLesson: (sectionIdx: number, lessonIdx: number, newTitle: string) => void;
   title: string;
   onTitleChange: (v: string) => void;
   author: string;
@@ -355,6 +453,20 @@ function ConfigureStep({
   onImport: () => void;
 }) {
   const totalLessons = course.sections.reduce((sum, s) => sum + s.lessons.length, 0);
+
+  const sectionSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSectionDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = structureIds.sections.indexOf(String(active.id));
+    const toIdx = structureIds.sections.indexOf(String(over.id));
+    if (fromIdx === -1 || toIdx === -1) return;
+    onReorderSections(fromIdx, toIdx);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -420,61 +532,64 @@ function ConfigureStep({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div
-          className="flex flex-col gap-5"
-          style={{ animation: `card-in 350ms ${EASE_OUT} 100ms both` }}
-        >
-          <h3 className="font-heading text-base font-bold text-foreground">
-            Course Details
-          </h3>
+      <div
+        className="flex flex-col gap-5"
+        style={{ animation: `card-in 350ms ${EASE_OUT} 100ms both` }}
+      >
+        <h3 className="font-heading text-base font-bold text-foreground">
+          Course Details
+        </h3>
 
-          <FieldGroup label="Title">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => onTitleChange(e.target.value)}
-              placeholder="Course title"
-              className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <FieldGroup label="Title">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => onTitleChange(e.target.value)}
+                placeholder="Course title"
+                className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              />
+            </FieldGroup>
+
+            <FieldGroup label="Author">
+              <input
+                type="text"
+                value={author}
+                onChange={(e) => onAuthorChange(e.target.value)}
+                placeholder="Instructor name"
+                className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              />
+            </FieldGroup>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <CategoryPicker
+              category={category}
+              onCategoryChange={onCategoryChange}
+              customCategories={customCategories}
+              onCustomCategoriesChange={onCustomCategoriesChange}
             />
-          </FieldGroup>
 
-          <FieldGroup label="Author">
-            <input
-              type="text"
-              value={author}
-              onChange={(e) => onAuthorChange(e.target.value)}
-              placeholder="Instructor name"
-              className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-            />
-          </FieldGroup>
-
-          <CategoryPicker
-            category={category}
-            onCategoryChange={onCategoryChange}
-            customCategories={customCategories}
-            onCustomCategoriesChange={onCustomCategoriesChange}
-          />
-
-          <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground">
-              <Palette className="size-3.5" />
-              Accent Color
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {accentColors.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => onAccentColorChange(color)}
-                  className={cn(
-                    "size-7 rounded-full border-2 transition-transform duration-150",
-                    accentColor === color
-                      ? "scale-110 border-foreground"
-                      : "border-transparent hover:scale-105"
-                  )}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground">
+                <Palette className="size-3.5" />
+                Accent Color
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {accentColors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => onAccentColorChange(color)}
+                    className={cn(
+                      "size-7 rounded-full border-2 transition-transform duration-150",
+                      accentColor === color
+                        ? "scale-110 border-foreground"
+                        : "border-transparent hover:scale-105"
+                    )}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
@@ -489,48 +604,59 @@ function ConfigureStep({
             </div>
           )}
 
-          {course.resources.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <label className="font-sans text-xs font-medium text-muted-foreground">
-                Course Resources
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {course.resources.map((r, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary px-2.5 py-1 font-sans text-xs text-muted-foreground"
-                  >
-                    <File className="size-3" />
-                    {r.title}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div
-          className="flex flex-col gap-3"
-          style={{ animation: `card-in 350ms ${EASE_OUT} 150ms both` }}
-        >
-          <h3 className="font-heading text-base font-bold text-foreground">
-            Course Structure
-          </h3>
-
-          <div className="relative">
-            <div className="squircle-subtle absolute inset-0 bg-border" />
-            <div className="squircle-subtle absolute inset-px bg-card" />
-            <div className="relative max-h-112 overflow-y-auto p-1">
-              {course.sections.map((section, si) => (
-                <SectionItem
-                  key={si}
-                  section={section}
-                  sectionIndex={si}
-                  defaultOpen={course.sections.length <= 3}
-                />
+        {course.resources.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <label className="font-sans text-xs font-medium text-muted-foreground">
+              Course Resources
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {course.resources.map((r, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary px-2.5 py-1 font-sans text-xs text-muted-foreground"
+                >
+                  <File className="size-3" />
+                  {r.title}
+                </span>
               ))}
             </div>
           </div>
+        )}
+      </div>
+
+      <div
+        className="flex flex-col gap-3"
+        style={{ animation: `card-in 350ms ${EASE_OUT} 150ms both` }}
+      >
+        <h3 className="font-heading text-base font-bold text-foreground">
+          Course Structure
+        </h3>
+
+        <div className="h-90 overflow-y-scroll rounded-xl border border-border bg-card px-3 py-2">
+          <DndContext
+            sensors={sectionSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleSectionDragEnd}
+          >
+            <SortableContext
+              items={structureIds.sections}
+              strategy={verticalListSortingStrategy}
+            >
+              {course.sections.map((section, si) => (
+                <SortableSection
+                  key={structureIds.sections[si]}
+                  id={structureIds.sections[si]}
+                  section={section}
+                  sectionIndex={si}
+                  lessonIds={structureIds.lessons[si] ?? []}
+                  defaultOpen={course.sections.length <= 3}
+                  onRenameSection={(t) => onRenameSection(si, t)}
+                  onRenameLesson={(li, t) => onRenameLesson(si, li, t)}
+                  onReorderLessons={(from, to) => onReorderLessons(si, from, to)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
 
@@ -682,64 +808,265 @@ function CategoryPicker({
   );
 }
 
-function SectionItem({
+function SortableSection({
+  id,
   section,
   sectionIndex,
+  lessonIds,
   defaultOpen,
+  onRenameSection,
+  onRenameLesson,
+  onReorderLessons,
 }: {
+  id: string;
   section: ParsedSection;
   sectionIndex: number;
+  lessonIds: string[];
   defaultOpen: boolean;
+  onRenameSection: (newTitle: string) => void;
+  onRenameLesson: (lessonIdx: number, newTitle: string) => void;
+  onReorderLessons: (from: number, to: number) => void;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const lessonSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleLessonDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = lessonIds.indexOf(String(active.id));
+    const toIdx = lessonIds.indexOf(String(over.id));
+    if (fromIdx === -1 || toIdx === -1) return;
+    onReorderLessons(fromIdx, toIdx);
+  };
+
+  const dragStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    position: "relative",
+    zIndex: isDragging ? 10 : undefined,
+  };
 
   return (
     <div
-      style={{
-        animation: `card-in 250ms ${EASE_OUT} ${(sectionIndex + 2) * 40}ms both`,
-      }}
+      ref={setNodeRef}
+      style={dragStyle}
+      {...attributes}
+    >
+      <div
+        style={{
+          animation: isDragging
+            ? undefined
+            : `card-in 250ms ${EASE_OUT} ${(sectionIndex + 2) * 40}ms both`,
+        }}
+      >
+        <div
+          onClick={() => setIsOpen(!isOpen)}
+          className="group/section flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 transition-colors hover:bg-secondary"
+        >
+          <button
+            type="button"
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Drag to reorder section"
+            className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground active:cursor-grabbing"
+          >
+            <DotsSixVertical className="size-4" weight="bold" />
+          </button>
+          {isOpen ? (
+            <CaretDown className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <CaretRight className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <EditableTitle
+            value={section.title}
+            onSave={onRenameSection}
+            ariaLabel="Edit section title"
+            className="flex-1 truncate text-left font-sans text-sm font-medium text-foreground"
+            inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-sm font-medium text-foreground focus:outline-none"
+          />
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+            {section.lessons.length} {section.lessons.length === 1 ? "lesson" : "lessons"}
+          </span>
+        </div>
+
+        {isOpen && (
+          <div className="ml-5 border-l border-border/50 pl-2">
+            <DndContext
+              sensors={lessonSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleLessonDragEnd}
+            >
+              <SortableContext items={lessonIds} strategy={verticalListSortingStrategy}>
+                {section.lessons.map((lesson, li) => (
+                  <SortableLesson
+                    key={lessonIds[li]}
+                    id={lessonIds[li]}
+                    lesson={lesson}
+                    index={li}
+                    onRename={(t) => onRenameLesson(li, t)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SortableLesson({
+  id,
+  lesson,
+  index,
+  onRename,
+}: {
+  id: string;
+  lesson: ParsedLesson;
+  index: number;
+  onRename: (newTitle: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const dragStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    position: "relative",
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      {...attributes}
+      className="group flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-secondary"
     >
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary"
+        type="button"
+        {...listeners}
+        aria-label="Drag to reorder lesson"
+        className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground active:cursor-grabbing"
       >
-        {isOpen ? (
-          <CaretDown className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <CaretRight className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span className="flex-1 truncate text-left font-sans text-sm font-medium text-foreground">
-          {section.title}
-        </span>
-        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-          {section.lessons.length} {section.lessons.length === 1 ? "lesson" : "lessons"}
-        </span>
+        <DotsSixVertical className="size-4" weight="bold" />
       </button>
+      <span className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary font-mono text-[10px] font-medium text-muted-foreground group-hover:bg-muted">
+        {index + 1}
+      </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <EditableTitle
+          value={lesson.title}
+          onSave={onRename}
+          ariaLabel="Edit lesson title"
+          className="min-w-0 flex-1 truncate font-sans text-xs text-foreground"
+          inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-xs text-foreground focus:outline-none"
+        />
+        {lesson.subtitles.length > 0 && (
+          <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary">
+            SUB
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {isOpen && (
-        <div className="ml-5 border-l border-border/50 pl-2">
-          {section.lessons.map((lesson, li) => (
-            <div
-              key={li}
-              className="group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-secondary"
-            >
-              <span className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary font-mono text-[10px] font-medium text-muted-foreground group-hover:bg-muted">
-                {li + 1}
-              </span>
-              <div className="flex flex-1 items-center gap-2 overflow-hidden">
-                <span className="truncate font-sans text-xs text-foreground">
-                  {lesson.title}
-                </span>
-                {lesson.subtitles.length > 0 && (
-                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary">
-                    SUB
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+function EditableTitle({
+  value,
+  onSave,
+  ariaLabel,
+  className,
+  inputClassName,
+}: {
+  value: string;
+  onSave: (newValue: string) => void;
+  ariaLabel: string;
+  className?: string;
+  inputClassName?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const startEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraft(value);
+    setEditing(true);
+  };
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setDraft(value);
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        aria-label={ariaLabel}
+        className={inputClassName}
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <span
+        onDoubleClick={startEditing}
+        className={className}
+        title="Double-click to edit"
+      >
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={startEditing}
+        aria-label={ariaLabel}
+        className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover/section:opacity-100 group-hover:opacity-100"
+      >
+        <PencilSimple className="size-3" weight="bold" />
+      </button>
     </div>
   );
 }
