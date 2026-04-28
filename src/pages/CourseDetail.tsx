@@ -31,6 +31,7 @@ import { EASE_OUT, SNAPPY } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
 import type { Note, Course, CourseDetail as CourseDetailData, Lesson, Subtitle } from "@/types";
 import { useSettings } from "@/hooks/useSettings";
+import { useCourseTitles } from "@/components/app-shell/CourseTitleContext";
 import {
   getCourse,
   getCourseDetail,
@@ -215,7 +216,12 @@ function CourseDetailInner({
   className?: string;
 }) {
   const { settings, loaded: settingsLoaded } = useSettings();
+  const { setTitle: setBreadcrumbTitle } = useCourseTitles();
   const allLessons = courseData.sections.flatMap((s) => s.lessons);
+
+  useEffect(() => {
+    setBreadcrumbTitle(course.id, course.title);
+  }, [course.id, course.title, setBreadcrumbTitle]);
 
   const requestedLesson = initialLessonId
     ? allLessons.find((l) => l.id === initialLessonId)
@@ -627,7 +633,7 @@ function CourseDetailInner({
 
           {activeLesson && (
             <div className="flex items-center gap-2">
-              <h2 className="font-sans text-sm font-semibold text-foreground">
+              <h2 className="font-sans text-base font-semibold text-foreground">
                 {activeLesson.title}
               </h2>
               <button
@@ -664,14 +670,11 @@ function CourseDetailInner({
 
           <div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="font-heading text-lg font-bold text-foreground sm:text-xl">
-                {course.title}
-              </h1>
+              <p className="font-sans text-sm text-muted-foreground">
+                by {course.author}
+              </p>
               {getStatusBadge(course.status)}
             </div>
-            <p className="mt-1 font-sans text-sm text-muted-foreground">
-              by {course.author}
-            </p>
 
             <div className="mt-3 flex flex-wrap items-center gap-3 sm:gap-5">
               <div className="flex items-center gap-1.5">

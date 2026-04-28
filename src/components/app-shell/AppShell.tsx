@@ -14,6 +14,7 @@ import logoLight from "@/assets/icons/logo-light.svg";
 import { spring, navigationItems, appItems } from "./constants";
 import { SquircleClipDefs } from "./SquircleClipDefs";
 import { useBreadcrumbs } from "./useBreadcrumbs";
+import { CourseTitleProvider } from "./CourseTitleContext";
 import { NavSection } from "./NavSection";
 import { SidebarSearch } from "./SidebarSearch";
 
@@ -22,6 +23,14 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  return (
+    <CourseTitleProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </CourseTitleProvider>
+  );
+}
+
+function AppShellInner({ children }: AppShellProps) {
   const { theme } = useTheme();
   const breadcrumbs = useBreadcrumbs();
   const logo = theme === "light" ? logoLight : logoDark;
