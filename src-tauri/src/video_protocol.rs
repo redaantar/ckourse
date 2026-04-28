@@ -108,7 +108,10 @@ fn decode_path(request: &Request<Vec<u8>>) -> Option<PathBuf> {
     let raw = uri.path().trim_start_matches('/');
     let decoded = percent_decode_str(raw).decode_utf8().ok()?;
     let as_str = decoded.as_ref();
-    if as_str.starts_with('/') {
+    let bytes = as_str.as_bytes();
+    if (bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic())
+        || as_str.starts_with('/')
+    {
         Some(PathBuf::from(as_str))
     } else {
         Some(PathBuf::from(format!("/{}", as_str)))
