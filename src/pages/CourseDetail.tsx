@@ -240,6 +240,9 @@ function CourseDetailInner({
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"resources" | "notes">("notes");
   const [notes, setNotes] = useState<Note[]>([]);
+  const lessonNotes = activeLesson
+    ? notes.filter((n) => n.lessonId === activeLesson.id)
+    : [];
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
@@ -722,9 +725,9 @@ function CourseDetailInner({
                 <span className="flex items-center gap-1.5">
                   <NotePencil className="size-3.5" />
                   Notes
-                  {notes.length > 0 && (
+                  {lessonNotes.length > 0 && (
                     <span className="font-mono text-[10px] text-muted-foreground">
-                      {notes.length}
+                      {lessonNotes.length}
                     </span>
                   )}
                 </span>
@@ -754,7 +757,7 @@ function CourseDetailInner({
 
             {activeTab === "notes" && (
               <NotesPanel
-                notes={notes}
+                notes={lessonNotes}
                 videoTime={Math.floor(videoTime)}
                 editingNoteId={editingNoteId}
                 showEditor={showEditor}
