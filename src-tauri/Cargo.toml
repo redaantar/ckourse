@@ -27,4 +27,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 percent-encoding = "2"
+# Google Drive source: HTTP client (rustls to avoid OpenSSL), PKCE + token storage.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+tokio = { version = "1", features = ["time"] }
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+
+# OS keychain for Google Drive OAuth tokens — backend differs per platform.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 

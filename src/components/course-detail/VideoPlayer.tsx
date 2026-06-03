@@ -221,6 +221,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [videoTime, setVideoTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(defaultVolume / 100);
   const [showControls, setShowControls] = useState(true);
@@ -281,7 +283,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const preferredSubLangRef = useRef<string | null>(null);
   const playbackSpeedRef = useRef(playbackSpeed);
 
-  const videoSrc = lesson ? convertFileSrc(lesson.videoPath, "stream") : undefined;
+  // Local lessons stream from disk via the `stream://` protocol; Google Drive
+  // lessons store `gdrive:<fileId>` and stream via the `gdrive://` protocol.
+  const videoSrc = lesson
+    ? lesson.videoPath.startsWith("gdrive:")
+      ? convertFileSrc(lesson.videoPath.slice("gdrive:".length), "gdrive")
+      : convertFileSrc(lesson.videoPath, "stream")
+    : undefined;
 
   // Reset state when lesson changes
   useEffect(() => {
@@ -289,6 +297,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     setVideoTime(0);
     setVideoDuration(0);
     setIsPlaying(false);
+    setLoadError(null);
+    // Start in the buffering state so the spinner shows immediately while the
+    // new source loads (the `waiting` event doesn't fire during initial metadata
+    // fetch); `canplay`/`playing` clear it once the video is ready.
+    setIsBuffering(!!lesson);
     setShowControls(true);
     setParsedTracks(new Map());
   }, [lesson?.id]);
@@ -681,6 +694,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 
   const handlePause = useCallback(() => {
     setIsPlaying(false);
+    setIsBuffering(false);
     onPlayStateChange?.(false);
     setShowControls(true);
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -689,10 +703,43 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const handleEnded = useCallback(() => {
     setHasEnded(true);
     setIsPlaying(false);
+    setIsBuffering(false);
     setShowControls(true);
     onPlayStateChange?.(false);
     onEnded?.();
   }, [onEnded, onPlayStateChange]);
+
+  // Buffering state: `waiting`/`stalled` fire when playback is starved (common
+  // for streamed Drive videos while the next block is fetched); `playing`/
+  // `canplay`/`seeked` clear it.
+  const handleWaiting = useCallback(() => setIsBuffering(true), []);
+  const handlePlaying = useCallback(() => setIsBuffering(false), []);
+  const handleCanPlay = useCallback(() => setIsBuffering(false), []);
+
+  // Recover from a load/network error: clear the error, re-fetch the source, and
+  // resume from where we were. The buffered chunk in our Drive proxy makes retry cheap.
+  const handleRetry = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const resumeAt = videoTime;
+    setLoadError(null);
+    setIsBuffering(true);
+    v.load();
+    const onReady = () => {
+      if (resumeAt > 0 && resumeAt < v.duration) v.currentTime = resumeAt;
+      safePlay(v, { trigger: "replay", lessonId: lesson?.id, videoPath: lesson?.videoPath });
+      v.removeEventListener("loadedmetadata", onReady);
+    };
+    v.addEventListener("loadedmetadata", onReady);
+  }, [videoTime, lesson?.id, lesson?.videoPath]);
+
+  // Auto-retry once the network comes back while an error is showing.
+  useEffect(() => {
+    if (!loadError) return;
+    const onOnline = () => handleRetry();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [loadError, handleRetry]);
 
   const handleProgress = useCallback(() => {
     if (!videoRef.current || !videoRef.current.duration) return;
@@ -805,6 +852,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         onPause={handlePause}
         onEnded={handleEnded}
         onProgress={handleProgress}
+        onWaiting={handleWaiting}
+        onPlaying={handlePlaying}
+        onCanPlay={handleCanPlay}
         onClick={togglePlay}
         onDoubleClick={handleDoubleClick}
         onLoadedMetadata={(e) => {
@@ -817,7 +867,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             videoHeight: v.videoHeight,
           });
         }}
-        onStalled={() => console.warn("[video] stalled", videoSrc)}
+        onStalled={() => {
+          console.warn("[video] stalled", videoSrc);
+          setIsBuffering(true);
+        }}
+        onSeeking={() => setIsBuffering(true)}
+        onSeeked={() => setIsBuffering(false)}
         onAbort={() => console.warn("[video] abort", videoSrc)}
         onError={(e) => {
           const v = e.currentTarget;
@@ -833,6 +888,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             networkState: v.networkState,
             readyState: v.readyState,
           });
+          setIsBuffering(false);
+          setLoadError(
+            !navigator.onLine
+              ? "You're offline. Reconnect to keep watching."
+              : "Couldn't load this video. Check your connection and try again.",
+          );
         }}
       />
 
@@ -944,7 +1005,31 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         </div>
       )}
 
-      {!isPlaying && !hasEnded && videoDuration > 0 && (
+      {isBuffering && !hasEnded && !loadError && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="size-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary" />
+        </div>
+      )}
+
+      {loadError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <div
+            className="flex max-w-sm flex-col items-center gap-4 px-6 text-center"
+            style={{ animation: `fadeInUp 400ms ${EASE_OUT} both` }}
+          >
+            <p className="font-sans text-sm text-white/90">{loadError}</p>
+            <button
+              onClick={handleRetry}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Clockwise className="size-4" weight="bold" />
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isPlaying && !hasEnded && !isBuffering && !loadError && videoDuration > 0 && (
         <button
           onClick={togglePlay}
           className="absolute inset-0 flex items-center justify-center"

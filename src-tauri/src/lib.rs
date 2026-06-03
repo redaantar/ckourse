@@ -1,5 +1,7 @@
 mod commands;
 mod db;
+mod drive_protocol;
+mod google;
 mod parser;
 mod subtitle;
 mod video_protocol;
@@ -11,6 +13,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol(video_protocol::SCHEME, video_protocol::handle)
+        .register_asynchronous_uri_scheme_protocol(drive_protocol::SCHEME, drive_protocol::handle)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -63,6 +66,15 @@ pub fn run() {
             commands::add_custom_category,
             commands::delete_custom_category,
             commands::search_content,
+            commands::drive_set_credentials,
+            commands::drive_credentials_status,
+            commands::drive_clear_credentials,
+            commands::drive_connect,
+            commands::drive_access_token,
+            commands::drive_pick_folder,
+            commands::parse_drive_folder,
+            commands::drive_auth_status,
+            commands::drive_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

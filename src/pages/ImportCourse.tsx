@@ -19,6 +19,7 @@ import {
   FileIcon as File,
   DotsSixVerticalIcon as DotsSixVertical,
   PencilSimpleIcon as PencilSimple,
+  CloudIcon as Cloud,
 } from "@phosphor-icons/react";
 import {
   DndContext,
@@ -42,6 +43,13 @@ import { cn } from "@/lib/utils";
 import { SquircleButton } from "@/components/ui/SquircleButton";
 import type { CourseCategory, ParsedCourse, ParsedSection, ParsedLesson } from "@/types";
 import { selectCourseFolder, parseCourseFolder } from "@/lib/courseParser";
+import {
+  driveCredentialsStatus,
+  driveAuthStatus,
+  driveConnect,
+  drivePickFolder,
+  parseDriveFolder,
+} from "@/lib/drive";
 import { importCourse, getCustomCategories, addCustomCategory, deleteCustomCategory } from "@/lib/store";
 import { EASE_OUT } from "@/lib/constants";
 
@@ -102,19 +110,22 @@ export function ImportCourse({ className }: ImportCourseProps) {
     getCustomCategories().then(setCustomCategories).catch(() => {});
   }, []);
 
+  const applyParsed = (result: ParsedCourse) => {
+    setParsedCourse(result);
+    setStructureIds({
+      sections: result.sections.map(() => makeId()),
+      lessons: result.sections.map((s) => s.lessons.map(() => makeId())),
+    });
+    setTitle(result.title);
+    setStep("configure");
+  };
+
   const handleParseCourse = async (folderPath: string) => {
     setIsLoading(true);
     setParseError(null);
 
     try {
-      const result = await parseCourseFolder(folderPath);
-      setParsedCourse(result);
-      setStructureIds({
-        sections: result.sections.map(() => makeId()),
-        lessons: result.sections.map((s) => s.lessons.map(() => makeId())),
-      });
-      setTitle(result.title);
-      setStep("configure");
+      applyParsed(await parseCourseFolder(folderPath));
     } catch (err) {
       setParseError(typeof err === "string" ? err : "Failed to parse course folder");
     } finally {
@@ -130,6 +141,27 @@ export function ImportCourse({ className }: ImportCourseProps) {
       }
     } catch (err) {
       setParseError("Failed to open folder picker");
+    }
+  };
+
+  const handleDriveImport = async () => {
+    setParseError(null);
+    try {
+      if (!(await driveCredentialsStatus())) {
+        setParseError("Add your Google Drive credentials in Settings first.");
+        return;
+      }
+      if (!(await driveAuthStatus()).connected) {
+        await driveConnect();
+      }
+      // Folder picker opens in the system browser; user picks one course folder.
+      const folder = await drivePickFolder();
+      setIsLoading(true);
+      applyParsed(await parseDriveFolder(folder.id, folder.name));
+    } catch (err) {
+      setParseError(typeof err === "string" ? err : "Failed to import from Google Drive");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -281,6 +313,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onBrowse={handleFolderSelect}
+          onImportDrive={handleDriveImport}
         />
       ) : parsedCourse ? (
         <ConfigureStep
@@ -315,6 +348,7 @@ function FolderSelectStep({
   onDragLeave,
   onDrop,
   onBrowse,
+  onImportDrive,
 }: {
   isDragOver: boolean;
   isLoading: boolean;
@@ -323,6 +357,7 @@ function FolderSelectStep({
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
   onBrowse: () => void;
+  onImportDrive: () => void;
 }) {
   return (
     <div style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}>
@@ -397,6 +432,26 @@ function FolderSelectStep({
           )}
         </div>
       </div>
+
+      <div className="my-4 flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="font-sans text-xs text-muted-foreground/60">or</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      <button
+        type="button"
+        onClick={isLoading ? undefined : onImportDrive}
+        disabled={isLoading}
+        className={cn(
+          "flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3",
+          "font-sans text-sm font-medium text-foreground transition-colors",
+          "hover:bg-secondary disabled:opacity-50",
+        )}
+      >
+        <Cloud className="size-4 text-muted-foreground" />
+        Import from Google Drive
+      </button>
 
       {error && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3">
