@@ -1362,6 +1362,12 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> SqlResult<()> {
     Ok(())
 }
 
+pub fn get_setting(conn: &Connection, key: &str) -> SqlResult<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query(params![key])?;
+    Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryStats {

@@ -15,13 +15,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
 const KEYCHAIN_SERVICE: &str = "com.ckourse.app";
 const KEYCHAIN_ACCOUNT: &str = "google-drive";
-const KEYCHAIN_CREDS_ACCOUNT: &str = "google-drive-credentials";
 const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 // drive.readonly: drive.file does NOT grant access to a picked folder's contents
@@ -584,52 +584,37 @@ fn enc(s: &str) -> String {
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
 }
 
-// --- Keychain persistence ---
+// --- Keychain persistence (tokens only) ---
 
 fn entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).map_err(|e| e.to_string())
 }
 
-// --- Bring-your-own credentials (keychain) ---
+// --- Bring-your-own credentials (in-memory cache; persisted in SQLite by the commands layer) ---
 
-fn creds_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_CREDS_ACCOUNT).map_err(|e| e.to_string())
+static CREDENTIALS: OnceLock<Mutex<Option<Credentials>>> = OnceLock::new();
+
+fn creds_lock() -> &'static Mutex<Option<Credentials>> {
+    CREDENTIALS.get_or_init(|| Mutex::new(None))
 }
 
-pub fn set_credentials(
-    client_id: String,
-    client_secret: String,
-    api_key: String,
-) -> Result<(), String> {
-    let creds = Credentials { client_id, client_secret, api_key };
-    let json = serde_json::to_string(&creds).map_err(|e| e.to_string())?;
-    creds_entry()?.set_password(&json).map_err(|e| e.to_string())
+/// Populate the in-memory credentials cache. Called from the commands layer on
+/// startup (from SQLite) and whenever the user saves new credentials.
+pub fn init_credentials(client_id: String, client_secret: String, api_key: String) {
+    *creds_lock().lock().unwrap() = Some(Credentials { client_id, client_secret, api_key });
+}
+
+/// Clear the in-memory credentials cache.
+pub fn clear_credentials_cache() {
+    *creds_lock().lock().unwrap() = None;
 }
 
 fn load_credentials() -> Result<Credentials, String> {
-    match creds_entry()?.get_password() {
-        Ok(json) => serde_json::from_str(&json).map_err(|e| e.to_string()),
-        Err(keyring::Error::NoEntry) => {
-            Err("Google credentials not set — add them in Settings.".to_string())
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-pub fn credentials_status() -> Result<bool, String> {
-    match creds_entry()?.get_password() {
-        Ok(_) => Ok(true),
-        Err(keyring::Error::NoEntry) => Ok(false),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-pub fn clear_credentials() -> Result<(), String> {
-    match creds_entry()?.delete_credential() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+    creds_lock()
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "Google credentials not set — add them in Settings.".to_string())
 }
 
 fn store_tokens(tokens: &StoredTokens) -> Result<(), String> {

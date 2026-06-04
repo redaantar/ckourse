@@ -1,27 +1,47 @@
+use crate::db::{self, DbState};
 use crate::google;
 use tauri::AppHandle;
+
+const CREDS_FLAG: &str = "google_drive_creds_set";
+const CREDS_CLIENT_ID: &str = "google_drive_client_id";
+const CREDS_CLIENT_SECRET: &str = "google_drive_client_secret";
+const CREDS_API_KEY: &str = "google_drive_api_key";
 
 // --- Bring-your-own credentials ---
 
 #[tauri::command]
 pub fn drive_set_credentials(
+    state: tauri::State<'_, DbState>,
     client_id: String,
     client_secret: String,
     api_key: String,
 ) -> Result<(), String> {
-    google::set_credentials(client_id, client_secret, api_key)
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_CLIENT_ID, &client_id).map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_CLIENT_SECRET, &client_secret).map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_API_KEY, &api_key).map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_FLAG, "true").map_err(|e| e.to_string())?;
+    drop(conn);
+    google::init_credentials(client_id, client_secret, api_key);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn drive_credentials_status() -> Result<bool, String> {
-    google::credentials_status()
+pub fn drive_credentials_status(state: tauri::State<'_, DbState>) -> Result<bool, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let val = db::get_setting(&conn, CREDS_FLAG).map_err(|e| e.to_string())?;
+    Ok(val.as_deref() == Some("true"))
 }
 
 #[tauri::command]
-pub fn drive_clear_credentials() -> Result<(), String> {
-    // Tokens are tied to these credentials — drop both.
+pub fn drive_clear_credentials(state: tauri::State<'_, DbState>) -> Result<(), String> {
     let _ = google::disconnect();
-    google::clear_credentials()
+    google::clear_credentials_cache();
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_FLAG, "false").map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_CLIENT_ID, "").map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_CLIENT_SECRET, "").map_err(|e| e.to_string())?;
+    db::set_setting(&conn, CREDS_API_KEY, "").map_err(|e| e.to_string())
 }
 
 // --- Auth + folder selection ---

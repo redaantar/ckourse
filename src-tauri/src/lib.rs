@@ -26,6 +26,18 @@ pub fn run() {
 
             let conn = db::init_db(&app_data_dir).expect("failed to initialize database");
 
+            // Warm the Google credentials cache from SQLite so auth works without
+            // touching the keychain.
+            if let (Ok(Some(id)), Ok(Some(secret)), Ok(Some(key))) = (
+                db::get_setting(&conn, "google_drive_client_id"),
+                db::get_setting(&conn, "google_drive_client_secret"),
+                db::get_setting(&conn, "google_drive_api_key"),
+            ) {
+                if !id.is_empty() && !secret.is_empty() && !key.is_empty() {
+                    google::init_credentials(id, secret, key);
+                }
+            }
+
             app.manage(DbState {
                 conn: std::sync::Mutex::new(conn),
             });
