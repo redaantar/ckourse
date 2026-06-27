@@ -24,11 +24,13 @@ import {
   PictureInPictureIcon as PictureInPicture,
   CaretRightIcon as CaretRight,
   GearSixIcon as GearSix,
+  GoogleDriveLogoIcon as GoogleDriveLogo,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { formatVideoTime } from "@/lib/format";
 import type { Lesson, Subtitle, VideoPlayerHandle } from "@/types";
 import { getSubtitleVtt } from "@/lib/store";
+import { driveAuthStatus, driveConnect } from "@/lib/drive";
 import { reportError } from "@/lib/posthog";
 import { EASE_OUT } from "@/lib/constants";
 
@@ -223,6 +225,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // True when the load failure is a Drive auth problem (token expired/revoked):
+  // the fix is reconnecting Drive, not retrying the network.
+  const [needsReconnect, setNeedsReconnect] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(defaultVolume / 100);
   const [showControls, setShowControls] = useState(true);
@@ -298,6 +303,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     setVideoDuration(0);
     setIsPlaying(false);
     setLoadError(null);
+    setNeedsReconnect(false);
     // Start in the buffering state so the spinner shows immediately while the
     // new source loads (the `waiting` event doesn't fire during initial metadata
     // fetch); `canplay`/`playing` clear it once the video is ready.
@@ -723,6 +729,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     if (!v) return;
     const resumeAt = videoTime;
     setLoadError(null);
+    setNeedsReconnect(false);
     setIsBuffering(true);
     v.load();
     const onReady = () => {
@@ -733,13 +740,48 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     v.addEventListener("loadedmetadata", onReady);
   }, [videoTime, lesson?.id, lesson?.videoPath]);
 
-  // Auto-retry once the network comes back while an error is showing.
+  // Decide which load-error message to show. Drive lessons can fail because the
+  // access/refresh token lapsed (test-mode tokens expire ~weekly), which looks
+  // like a generic media error but is fixed by reconnecting, not retrying.
+  const surfaceLoadError = useCallback(async () => {
+    setIsBuffering(false);
+    if (!navigator.onLine) {
+      setNeedsReconnect(false);
+      setLoadError("You're offline. Reconnect to keep watching.");
+      return;
+    }
+    if (lesson?.videoPath.startsWith("gdrive:")) {
+      const connected = await driveAuthStatus()
+        .then((s) => s.connected)
+        .catch(() => true); // on an inconclusive check, fall back to the generic message
+      if (!connected) {
+        setNeedsReconnect(true);
+        setLoadError("Your Google Drive connection expired. Reconnect to keep watching.");
+        return;
+      }
+    }
+    setNeedsReconnect(false);
+    setLoadError("Couldn't load this video. Check your connection and try again.");
+  }, [lesson?.videoPath]);
+
+  // Reconnect Drive (opens the system browser), then retry from where we were.
+  const handleReconnect = useCallback(async () => {
+    try {
+      await driveConnect();
+    } catch {
+      return; // user cancelled or it failed — leave the error showing
+    }
+    handleRetry();
+  }, [handleRetry]);
+
+  // Auto-retry once the network comes back while an error is showing. Skip it for
+  // auth failures — coming back online won't refresh an expired Drive token.
   useEffect(() => {
-    if (!loadError) return;
+    if (!loadError || needsReconnect) return;
     const onOnline = () => handleRetry();
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
-  }, [loadError, handleRetry]);
+  }, [loadError, needsReconnect, handleRetry]);
 
   const handleProgress = useCallback(() => {
     if (!videoRef.current || !videoRef.current.duration) return;
@@ -888,12 +930,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             networkState: v.networkState,
             readyState: v.readyState,
           });
-          setIsBuffering(false);
-          setLoadError(
-            !navigator.onLine
-              ? "You're offline. Reconnect to keep watching."
-              : "Couldn't load this video. Check your connection and try again.",
-          );
+          void surfaceLoadError();
         }}
       />
 
@@ -1018,13 +1055,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             style={{ animation: `fadeInUp 400ms ${EASE_OUT} both` }}
           >
             <p className="font-sans text-sm text-white/90">{loadError}</p>
-            <button
-              onClick={handleRetry}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Clockwise className="size-4" weight="bold" />
-              Try again
-            </button>
+            {needsReconnect ? (
+              <button
+                onClick={handleReconnect}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <GoogleDriveLogo className="size-4" weight="fill" />
+                Reconnect Google Drive
+              </button>
+            ) : (
+              <button
+                onClick={handleRetry}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Clockwise className="size-4" weight="bold" />
+                Try again
+              </button>
+            )}
           </div>
         </div>
       )}

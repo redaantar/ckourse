@@ -167,7 +167,16 @@ export function ImportCourse({ className }: ImportCourseProps) {
       setIsLoading(true);
       applyParsed(await parseDriveFolder(folder.id, folder.name));
     } catch (err) {
-      showError(typeof err === "string" ? err : "Failed to import from Google Drive");
+      const msg = typeof err === "string" ? err : "";
+      // Cancelling the picker is a deliberate action, not an error.
+      if (/cancel/i.test(msg)) return;
+      // Missing credentials can also surface here (not just the pre-check above);
+      // point the user at Settings so they can add them.
+      if (/credentials? (not set|not configured)/i.test(msg)) {
+        showError(msg, true);
+        return;
+      }
+      showError(msg || "Failed to import from Google Drive");
     } finally {
       setIsLoading(false);
     }
