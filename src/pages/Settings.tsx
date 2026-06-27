@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageVisible } from "@/hooks/usePageVisible";
 import { useSettings } from "@/hooks/useSettings";
@@ -437,6 +437,10 @@ function GoogleDriveSection({ index }: { index: number }) {
     refresh();
   }, [refresh]);
 
+  // The Settings page stays mounted (kept-alive), so re-check status whenever it
+  // becomes visible again — e.g. after reconnecting Drive from a course page.
+  usePageVisible("/settings", refresh);
+
   const run = useCallback(
     async (fn: () => Promise<unknown>) => {
       setBusy(true);
@@ -452,6 +456,35 @@ function GoogleDriveSection({ index }: { index: number }) {
     },
     [refresh],
   );
+
+  // Connect is special: the Rust side blocks until the browser redirect arrives
+  // (or its long internal timeout fires), and closing the browser sends no
+  // signal. A generation token lets the user abort the "Check your browser…"
+  // state — a later-resolving stale attempt is then ignored.
+  const [connecting, setConnecting] = useState(false);
+  const connectGen = useRef(0);
+
+  const connect = useCallback(async () => {
+    const gen = ++connectGen.current;
+    setConnecting(true);
+    setError(null);
+    try {
+      await driveConnect();
+      if (gen !== connectGen.current) return; // aborted or superseded
+      await refresh();
+    } catch (e) {
+      if (gen !== connectGen.current) return;
+      setError(errMsg(e));
+    } finally {
+      if (gen === connectGen.current) setConnecting(false);
+    }
+  }, [refresh]);
+
+  const cancelConnect = useCallback(() => {
+    connectGen.current++; // invalidate the in-flight attempt
+    setConnecting(false);
+    setError(null);
+  }, []);
 
   const saveCreds = () =>
     run(async () => {
@@ -532,13 +565,14 @@ function GoogleDriveSection({ index }: { index: number }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setEditing(true)}
-                className="rounded-lg border border-border px-3 py-1.5 font-sans text-sm text-muted-foreground transition-colors hover:text-foreground"
+                disabled={busy || connecting}
+                className="rounded-lg border border-border px-3 py-1.5 font-sans text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
                 Edit
               </button>
               <button
                 onClick={() => run(driveClearCredentials)}
-                disabled={busy}
+                disabled={busy || connecting}
                 className="rounded-lg border border-destructive/30 px-3 py-1.5 font-sans text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
               >
                 Clear
@@ -563,16 +597,28 @@ function GoogleDriveSection({ index }: { index: number }) {
               >
                 Disconnect
               </button>
+            ) : connecting ? (
+              <div className="flex items-center gap-2">
+                <span className="font-sans text-sm text-muted-foreground">
+                  Check your browser…
+                </span>
+                <button
+                  onClick={cancelConnect}
+                  className="rounded-lg border border-border px-3 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
             ) : (
               <button
-                onClick={() => run(driveConnect)}
+                onClick={connect}
                 disabled={busy}
                 className={cn(
                   "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
                   "transition-colors hover:bg-primary/90 disabled:opacity-50",
                 )}
               >
-                {busy ? "Check your browser…" : "Connect"}
+                Connect
               </button>
             )}
           </SettingRow>
