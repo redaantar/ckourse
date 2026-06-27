@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { ArrowRightIcon as ArrowRight, BookmarkSimpleIcon as BookmarkSimple, ClockIcon as Clock } from "@phosphor-icons/react";
+import { ArrowRightIcon as ArrowRight, BookmarkSimpleIcon as BookmarkSimple, ClockIcon as Clock, GoogleDriveLogoIcon as GoogleDriveLogo } from "@phosphor-icons/react";
 import { useState, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Course } from "@/types";
@@ -50,6 +50,7 @@ export function CourseCard({ course, onBookmarkChange }: { course: Course; onBoo
   const percentage = Math.round(
     (course.completedLessons / course.totalLessons) * 100
   );
+  const isFromDrive = course.folderPath.startsWith("gdrive:");
 
   return (
     <Link to={`/course/${course.id}?from=${encodeURIComponent(location.pathname + location.search)}`} className="block h-full">
@@ -74,6 +75,16 @@ export function CourseCard({ course, onBookmarkChange }: { course: Course; onBoo
             </span>
           </div>
         </div>
+
+        {isFromDrive && (
+          <span
+            className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground backdrop-blur-sm"
+            title="Loaded from Google Drive"
+          >
+            <GoogleDriveLogo className="size-3.5 text-info" weight="fill" />
+            Drive
+          </span>
+        )}
 
         <BookmarkButton bookmarked={course.bookmarked} courseId={course.id} onBookmarkChange={onBookmarkChange} />
 
