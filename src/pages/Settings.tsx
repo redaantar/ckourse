@@ -37,6 +37,7 @@ import {
   driveDisconnect,
 } from "@/lib/drive";
 import { EASE_OUT } from "@/lib/constants";
+import { DriveSetupGuide } from "@/components/DriveSetupGuide";
 import { useUpdater } from "@/hooks/useUpdater";
 import { getVersion } from "@tauri-apps/api/app";
 
@@ -477,6 +478,7 @@ function GoogleDriveSection({ index }: { index: number }) {
 
       {showForm ? (
         <div className="flex flex-col gap-3 py-1">
+          <DriveSetupGuide />
           <CredInput
             label="OAuth Client ID (Desktop app)"
             value={clientId}

@@ -96,6 +96,14 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [errorNeedsSettings, setErrorNeedsSettings] = useState(false);
+
+  // Single entry point for surfacing/clearing the parse error so the
+  // "needs settings" flag never drifts out of sync with the message.
+  const showError = (msg: string | null, needsSettings = false) => {
+    setParseError(msg);
+    setErrorNeedsSettings(needsSettings);
+  };
   const [parsedCourse, setParsedCourse] = useState<ParsedCourse | null>(null);
   const [structureIds, setStructureIds] = useState<StructureIds>({ sections: [], lessons: [] });
   const [isImporting, setIsImporting] = useState(false);
@@ -122,12 +130,12 @@ export function ImportCourse({ className }: ImportCourseProps) {
 
   const handleParseCourse = async (folderPath: string) => {
     setIsLoading(true);
-    setParseError(null);
+    showError(null);
 
     try {
       applyParsed(await parseCourseFolder(folderPath));
     } catch (err) {
-      setParseError(typeof err === "string" ? err : "Failed to parse course folder");
+      showError(typeof err === "string" ? err : "Failed to parse course folder");
     } finally {
       setIsLoading(false);
     }
@@ -140,15 +148,15 @@ export function ImportCourse({ className }: ImportCourseProps) {
         await handleParseCourse(folderPath);
       }
     } catch (err) {
-      setParseError("Failed to open folder picker");
+      showError("Failed to open folder picker");
     }
   };
 
   const handleDriveImport = async () => {
-    setParseError(null);
+    showError(null);
     try {
       if (!(await driveCredentialsStatus())) {
-        setParseError("Add your Google Drive credentials in Settings first.");
+        showError("Connect your Google Drive before importing.", true);
         return;
       }
       if (!(await driveAuthStatus()).connected) {
@@ -159,7 +167,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
       setIsLoading(true);
       applyParsed(await parseDriveFolder(folder.id, folder.name));
     } catch (err) {
-      setParseError(typeof err === "string" ? err : "Failed to import from Google Drive");
+      showError(typeof err === "string" ? err : "Failed to import from Google Drive");
     } finally {
       setIsLoading(false);
     }
@@ -181,7 +189,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
           if (path) {
             await handleParseCourse(path);
           } else {
-            setParseError("Could not read the dropped folder path. Try using Browse instead.");
+            showError("Could not read the dropped folder path. Try using Browse instead.");
           }
         }
       }
@@ -253,7 +261,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
       });
       navigate(`/course/${courseId}`);
     } catch (err) {
-      setParseError(typeof err === "string" ? err : "Failed to import course");
+      showError(typeof err === "string" ? err : "Failed to import course");
     } finally {
       setIsImporting(false);
     }
@@ -306,6 +314,8 @@ export function ImportCourse({ className }: ImportCourseProps) {
           isDragOver={isDragOver}
           isLoading={isLoading}
           error={parseError}
+          errorNeedsSettings={errorNeedsSettings}
+          onGoToSettings={() => navigate("/settings")}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragOver(true);
@@ -344,6 +354,8 @@ function FolderSelectStep({
   isDragOver,
   isLoading,
   error,
+  errorNeedsSettings,
+  onGoToSettings,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -353,6 +365,8 @@ function FolderSelectStep({
   isDragOver: boolean;
   isLoading: boolean;
   error: string | null;
+  errorNeedsSettings: boolean;
+  onGoToSettings: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
@@ -456,7 +470,21 @@ function FolderSelectStep({
       {error && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3">
           <Warning className="size-4 shrink-0 text-destructive" weight="bold" />
-          <p className="font-sans text-sm text-destructive">{error}</p>
+          <p className="font-sans text-sm text-destructive">
+            {error}
+            {errorNeedsSettings && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={onGoToSettings}
+                  className="font-medium text-destructive underline underline-offset-2 transition-opacity hover:opacity-70"
+                >
+                  Go to Settings
+                </button>
+              </>
+            )}
+          </p>
         </div>
       )}
 
