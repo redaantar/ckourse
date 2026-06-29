@@ -42,6 +42,7 @@ interface VideoPlayerProps {
   accentColor?: string;
   autoPlay?: boolean;
   autoSkipEnabled?: boolean;
+  autoSkipSeconds?: number;
   initialTime?: number | null;
   defaultSpeed?: number;
   defaultVolume?: number;
@@ -55,6 +56,8 @@ interface VideoPlayerProps {
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const AUTO_SKIP_SECONDS = 5;
+// Tick interval (ms) for the auto-skip countdown.
+const AUTO_SKIP_TICK_MS = 50;
 
 // Extract the file extension from a path or URL (lowercased, no leading dot).
 function getFileExtension(path: string | undefined): string | undefined {
@@ -191,6 +194,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   accentColor,
   autoPlay,
   autoSkipEnabled = true,
+  autoSkipSeconds = AUTO_SKIP_SECONDS,
   initialTime,
   defaultSpeed = 1,
   defaultVolume = 100,
@@ -251,14 +255,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [subMenuView, setSubMenuView] = useState<"tracks" | "settings">(
     "tracks",
   );
-  const [autoSkipRemaining, setAutoSkipRemaining] = useState(AUTO_SKIP_SECONDS);
+  const [autoSkipRemaining, setAutoSkipRemaining] = useState(autoSkipSeconds);
   const [autoSkipCancelled, setAutoSkipCancelled] = useState(false);
 
   // Auto-skip countdown when video ends
   const autoSkipFiredRef = useRef(false);
   useEffect(() => {
     if (!hasEnded || !hasNext || !autoSkipEnabled || autoSkipCancelled) {
-      setAutoSkipRemaining(AUTO_SKIP_SECONDS);
+      setAutoSkipRemaining(autoSkipSeconds);
       autoSkipFiredRef.current = false;
       return;
     }
@@ -268,11 +272,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       onNext?.();
       return;
     }
+    const tick = AUTO_SKIP_TICK_MS / 1000;
     const timer = setTimeout(() => {
-      setAutoSkipRemaining((t) => t - 0.05);
-    }, 50);
+      setAutoSkipRemaining((t) => t - tick);
+    }, AUTO_SKIP_TICK_MS);
     return () => clearTimeout(timer);
-  }, [hasEnded, hasNext, autoSkipEnabled, autoSkipCancelled, autoSkipRemaining, onNext]);
+  }, [hasEnded, hasNext, autoSkipEnabled, autoSkipCancelled, autoSkipRemaining, autoSkipSeconds, onNext]);
 
   // Reset auto-skip cancelled state when lesson changes
   useEffect(() => {
@@ -1021,7 +1026,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                         stroke="currentColor"
                         strokeWidth="2"
                         className="text-primary"
-                        strokeDasharray={`${((AUTO_SKIP_SECONDS - autoSkipRemaining) / AUTO_SKIP_SECONDS) * 272} 272`}
+                        strokeDasharray={`${(autoSkipSeconds > 0 ? (autoSkipSeconds - autoSkipRemaining) / autoSkipSeconds : 1) * 272} 272`}
                         style={{ transition: "stroke-dasharray 50ms linear" }}
                       />
                     </svg>
