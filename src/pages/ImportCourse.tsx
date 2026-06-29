@@ -19,6 +19,7 @@ import {
   FileIcon as File,
   DotsSixVerticalIcon as DotsSixVertical,
   PencilSimpleIcon as PencilSimple,
+  CloudIcon as Cloud,
 } from "@phosphor-icons/react";
 import {
   DndContext,
@@ -42,6 +43,13 @@ import { cn } from "@/lib/utils";
 import { SquircleButton } from "@/components/ui/SquircleButton";
 import type { CourseCategory, ParsedCourse, ParsedSection, ParsedLesson } from "@/types";
 import { selectCourseFolder, parseCourseFolder } from "@/lib/courseParser";
+import {
+  driveCredentialsStatus,
+  driveAuthStatus,
+  driveConnect,
+  drivePickFolder,
+  parseDriveFolder,
+} from "@/lib/drive";
 import { importCourse, getCustomCategories, addCustomCategory, deleteCustomCategory } from "@/lib/store";
 import { EASE_OUT } from "@/lib/constants";
 
@@ -88,6 +96,14 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [errorNeedsSettings, setErrorNeedsSettings] = useState(false);
+
+  // Single entry point for surfacing/clearing the parse error so the
+  // "needs settings" flag never drifts out of sync with the message.
+  const showError = (msg: string | null, needsSettings = false) => {
+    setParseError(msg);
+    setErrorNeedsSettings(needsSettings);
+  };
   const [parsedCourse, setParsedCourse] = useState<ParsedCourse | null>(null);
   const [structureIds, setStructureIds] = useState<StructureIds>({ sections: [], lessons: [] });
   const [isImporting, setIsImporting] = useState(false);
@@ -102,21 +118,24 @@ export function ImportCourse({ className }: ImportCourseProps) {
     getCustomCategories().then(setCustomCategories).catch(() => {});
   }, []);
 
+  const applyParsed = (result: ParsedCourse) => {
+    setParsedCourse(result);
+    setStructureIds({
+      sections: result.sections.map(() => makeId()),
+      lessons: result.sections.map((s) => s.lessons.map(() => makeId())),
+    });
+    setTitle(result.title);
+    setStep("configure");
+  };
+
   const handleParseCourse = async (folderPath: string) => {
     setIsLoading(true);
-    setParseError(null);
+    showError(null);
 
     try {
-      const result = await parseCourseFolder(folderPath);
-      setParsedCourse(result);
-      setStructureIds({
-        sections: result.sections.map(() => makeId()),
-        lessons: result.sections.map((s) => s.lessons.map(() => makeId())),
-      });
-      setTitle(result.title);
-      setStep("configure");
+      applyParsed(await parseCourseFolder(folderPath));
     } catch (err) {
-      setParseError(typeof err === "string" ? err : "Failed to parse course folder");
+      showError(typeof err === "string" ? err : "Failed to parse course folder");
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +148,37 @@ export function ImportCourse({ className }: ImportCourseProps) {
         await handleParseCourse(folderPath);
       }
     } catch (err) {
-      setParseError("Failed to open folder picker");
+      showError("Failed to open folder picker");
+    }
+  };
+
+  const handleDriveImport = async () => {
+    showError(null);
+    try {
+      if (!(await driveCredentialsStatus())) {
+        showError("Connect your Google Drive before importing.", true);
+        return;
+      }
+      if (!(await driveAuthStatus()).connected) {
+        await driveConnect();
+      }
+      // Folder picker opens in the system browser; user picks one course folder.
+      const folder = await drivePickFolder();
+      setIsLoading(true);
+      applyParsed(await parseDriveFolder(folder.id, folder.name));
+    } catch (err) {
+      const msg = typeof err === "string" ? err : "";
+      // Cancelling the picker is a deliberate action, not an error.
+      if (/cancel/i.test(msg)) return;
+      // Missing credentials can also surface here (not just the pre-check above);
+      // point the user at Settings so they can add them.
+      if (/credentials? (not set|not configured)/i.test(msg)) {
+        showError(msg, true);
+        return;
+      }
+      showError(msg || "Failed to import from Google Drive");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -149,7 +198,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
           if (path) {
             await handleParseCourse(path);
           } else {
-            setParseError("Could not read the dropped folder path. Try using Browse instead.");
+            showError("Could not read the dropped folder path. Try using Browse instead.");
           }
         }
       }
@@ -221,7 +270,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
       });
       navigate(`/course/${courseId}`);
     } catch (err) {
-      setParseError(typeof err === "string" ? err : "Failed to import course");
+      showError(typeof err === "string" ? err : "Failed to import course");
     } finally {
       setIsImporting(false);
     }
@@ -274,6 +323,8 @@ export function ImportCourse({ className }: ImportCourseProps) {
           isDragOver={isDragOver}
           isLoading={isLoading}
           error={parseError}
+          errorNeedsSettings={errorNeedsSettings}
+          onGoToSettings={() => navigate("/settings")}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragOver(true);
@@ -281,6 +332,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onBrowse={handleFolderSelect}
+          onImportDrive={handleDriveImport}
         />
       ) : parsedCourse ? (
         <ConfigureStep
@@ -311,18 +363,24 @@ function FolderSelectStep({
   isDragOver,
   isLoading,
   error,
+  errorNeedsSettings,
+  onGoToSettings,
   onDragOver,
   onDragLeave,
   onDrop,
   onBrowse,
+  onImportDrive,
 }: {
   isDragOver: boolean;
   isLoading: boolean;
   error: string | null;
+  errorNeedsSettings: boolean;
+  onGoToSettings: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
   onBrowse: () => void;
+  onImportDrive: () => void;
 }) {
   return (
     <div style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}>
@@ -398,10 +456,44 @@ function FolderSelectStep({
         </div>
       </div>
 
+      <div className="my-4 flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="font-sans text-xs text-muted-foreground/60">or</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      <button
+        type="button"
+        onClick={isLoading ? undefined : onImportDrive}
+        disabled={isLoading}
+        className={cn(
+          "flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3",
+          "font-sans text-sm font-medium text-foreground transition-colors",
+          "hover:bg-secondary disabled:opacity-50",
+        )}
+      >
+        <Cloud className="size-4 text-muted-foreground" />
+        Import from Google Drive
+      </button>
+
       {error && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3">
           <Warning className="size-4 shrink-0 text-destructive" weight="bold" />
-          <p className="font-sans text-sm text-destructive">{error}</p>
+          <p className="font-sans text-sm text-destructive">
+            {error}
+            {errorNeedsSettings && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={onGoToSettings}
+                  className="font-medium text-destructive underline underline-offset-2 transition-opacity hover:opacity-70"
+                >
+                  Go to Settings
+                </button>
+              </>
+            )}
+          </p>
         </div>
       )}
 

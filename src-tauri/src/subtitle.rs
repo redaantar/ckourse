@@ -38,6 +38,25 @@ pub fn read_as_vtt(path: &str) -> Result<String, String> {
     }
 }
 
+/// Convert subtitle bytes of unknown format (e.g. fetched from Google Drive) to
+/// WebVTT, auto-detecting srt/vtt/ass from the content (the source gives us no
+/// reliable extension). Mirrors the conversions used by `read_as_vtt`.
+pub fn convert_bytes_to_vtt(raw: &[u8]) -> Result<String, String> {
+    let content = match String::from_utf8(raw.to_vec()) {
+        Ok(s) => s,
+        Err(_) => raw.iter().map(|&b| b as char).collect::<String>(),
+    };
+    let content = content.strip_prefix('\u{FEFF}').unwrap_or(&content);
+    let trimmed = content.trim_start();
+    if trimmed.starts_with("WEBVTT") {
+        Ok(content.to_string())
+    } else if content.contains("Dialogue:") {
+        Ok(ass_to_vtt(content))
+    } else {
+        Ok(srt_to_vtt(content))
+    }
+}
+
 /// Parse a virtual embedded subtitle path like `<video>#subtitle:<index>`.
 fn parse_embedded_subtitle_path(path: &str) -> Option<(String, u64)> {
     let sep = "#subtitle:";

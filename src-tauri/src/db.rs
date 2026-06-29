@@ -149,6 +149,7 @@ pub fn init_db(app_data_dir: &Path) -> SqlResult<Connection> {
             description TEXT,
             thumbnail_path TEXT,
             folder_path TEXT NOT NULL,
+            source_type TEXT NOT NULL DEFAULT 'local',
             last_watched TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -241,6 +242,11 @@ pub fn init_db(app_data_dir: &Path) -> SqlResult<Connection> {
         "ALTER TABLE lessons ADD COLUMN last_position REAL NOT NULL DEFAULT 0;",
     );
 
+    // Source type (local folder vs Google Drive) for existing databases
+    let _ = conn.execute_batch(
+        "ALTER TABLE courses ADD COLUMN source_type TEXT NOT NULL DEFAULT 'local';",
+    );
+
     // Bookmarks table migration for existing databases
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS bookmarks (
@@ -309,9 +315,15 @@ fn save_parsed_course_inner(
     input: &SaveCourseInput,
     now: &str,
 ) -> SqlResult<i64> {
+    // Drive courses carry a `gdrive:<rootId>` folder_path; everything else is local.
+    let source_type = if parsed.folder_path.starts_with("gdrive:") {
+        "drive"
+    } else {
+        "local"
+    };
     conn.execute(
-        "INSERT INTO courses (title, author, accent_color, category, description, thumbnail_path, folder_path, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO courses (title, author, accent_color, category, description, thumbnail_path, folder_path, source_type, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             input.title,
             input.author,
@@ -320,6 +332,7 @@ fn save_parsed_course_inner(
             parsed.description,
             parsed.thumbnail_path,
             parsed.folder_path,
+            source_type,
             now,
             now,
         ],
@@ -1347,6 +1360,12 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> SqlResult<()> {
         params![key, value],
     )?;
     Ok(())
+}
+
+pub fn get_setting(conn: &Connection, key: &str) -> SqlResult<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query(params![key])?;
+    Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
 }
 
 #[derive(Debug, Serialize, Clone)]

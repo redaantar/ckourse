@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useNavigate } from "react-router-dom";
 import {
   PlayIcon as Play,
   PauseIcon as Pause,
@@ -24,11 +25,13 @@ import {
   PictureInPictureIcon as PictureInPicture,
   CaretRightIcon as CaretRight,
   GearSixIcon as GearSix,
+  GoogleDriveLogoIcon as GoogleDriveLogo,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { formatVideoTime } from "@/lib/format";
 import type { Lesson, Subtitle, VideoPlayerHandle } from "@/types";
 import { getSubtitleVtt } from "@/lib/store";
+import { driveAuthStatus, driveConnect, driveCredentialsStatus } from "@/lib/drive";
 import { reportError } from "@/lib/posthog";
 import { EASE_OUT } from "@/lib/constants";
 
@@ -198,6 +201,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   onEnded,
   onNext,
 }, ref) {
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -221,6 +225,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [videoTime, setVideoTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // True when the load failure is a Drive auth problem (token expired/revoked):
+  // the fix is reconnecting Drive, not retrying the network.
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  // True when Drive credentials are missing entirely (cleared in Settings):
+  // reconnecting can't work, the user must re-add credentials in Settings.
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(defaultVolume / 100);
   const [showControls, setShowControls] = useState(true);
@@ -281,7 +293,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const preferredSubLangRef = useRef<string | null>(null);
   const playbackSpeedRef = useRef(playbackSpeed);
 
-  const videoSrc = lesson ? convertFileSrc(lesson.videoPath, "stream") : undefined;
+  // Local lessons stream from disk via the `stream://` protocol; Google Drive
+  // lessons store `gdrive:<fileId>` and stream via the `gdrive://` protocol.
+  const videoSrc = lesson
+    ? lesson.videoPath.startsWith("gdrive:")
+      ? convertFileSrc(lesson.videoPath.slice("gdrive:".length), "gdrive")
+      : convertFileSrc(lesson.videoPath, "stream")
+    : undefined;
 
   // Reset state when lesson changes
   useEffect(() => {
@@ -289,6 +307,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     setVideoTime(0);
     setVideoDuration(0);
     setIsPlaying(false);
+    setLoadError(null);
+    setNeedsReconnect(false);
+    setNeedsSetup(false);
+    // Start in the buffering state so the spinner shows immediately while the
+    // new source loads (the `waiting` event doesn't fire during initial metadata
+    // fetch); `canplay`/`playing` clear it once the video is ready.
+    setIsBuffering(!!lesson);
     setShowControls(true);
     setParsedTracks(new Map());
   }, [lesson?.id]);
@@ -681,6 +706,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 
   const handlePause = useCallback(() => {
     setIsPlaying(false);
+    setIsBuffering(false);
     onPlayStateChange?.(false);
     setShowControls(true);
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -689,10 +715,88 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const handleEnded = useCallback(() => {
     setHasEnded(true);
     setIsPlaying(false);
+    setIsBuffering(false);
     setShowControls(true);
     onPlayStateChange?.(false);
     onEnded?.();
   }, [onEnded, onPlayStateChange]);
+
+  // Buffering state: `waiting`/`stalled` fire when playback is starved (common
+  // for streamed Drive videos while the next block is fetched); `playing`/
+  // `canplay`/`seeked` clear it.
+  const handleWaiting = useCallback(() => setIsBuffering(true), []);
+  const handlePlaying = useCallback(() => setIsBuffering(false), []);
+  const handleCanPlay = useCallback(() => setIsBuffering(false), []);
+
+  // Recover from a load/network error: clear the error, re-fetch the source, and
+  // resume from where we were. The buffered chunk in our Drive proxy makes retry cheap.
+  const handleRetry = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const resumeAt = videoTime;
+    setLoadError(null);
+    setNeedsReconnect(false);
+    setNeedsSetup(false);
+    setIsBuffering(true);
+    v.load();
+    const onReady = () => {
+      if (resumeAt > 0 && resumeAt < v.duration) v.currentTime = resumeAt;
+      safePlay(v, { trigger: "replay", lessonId: lesson?.id, videoPath: lesson?.videoPath });
+      v.removeEventListener("loadedmetadata", onReady);
+    };
+    v.addEventListener("loadedmetadata", onReady);
+  }, [videoTime, lesson?.id, lesson?.videoPath]);
+
+  // Decide which load-error message to show. Drive lessons can fail because the
+  // access/refresh token lapsed (test-mode tokens expire ~weekly), which looks
+  // like a generic media error but is fixed by reconnecting, not retrying.
+  const surfaceLoadError = useCallback(async () => {
+    setIsBuffering(false);
+    setNeedsReconnect(false);
+    setNeedsSetup(false);
+    if (!navigator.onLine) {
+      setLoadError("You're offline. Reconnect to keep watching.");
+      return;
+    }
+    if (lesson?.videoPath.startsWith("gdrive:")) {
+      // Credentials cleared entirely → reconnecting can't help; send to Settings.
+      const credsSet = await driveCredentialsStatus().catch(() => true);
+      if (!credsSet) {
+        setNeedsSetup(true);
+        setLoadError("Google Drive isn't set up. Add your credentials in Settings to watch this course.");
+        return;
+      }
+      // Credentials present but the token lapsed → reconnecting fixes it.
+      const connected = await driveAuthStatus()
+        .then((s) => s.connected)
+        .catch(() => true); // on an inconclusive check, fall back to the generic message
+      if (!connected) {
+        setNeedsReconnect(true);
+        setLoadError("Your Google Drive connection expired. Reconnect to keep watching.");
+        return;
+      }
+    }
+    setLoadError("Couldn't load this video. Check your connection and try again.");
+  }, [lesson?.videoPath]);
+
+  // Reconnect Drive (opens the system browser), then retry from where we were.
+  const handleReconnect = useCallback(async () => {
+    try {
+      await driveConnect();
+    } catch {
+      return; // user cancelled or it failed — leave the error showing
+    }
+    handleRetry();
+  }, [handleRetry]);
+
+  // Auto-retry once the network comes back while an error is showing. Skip it for
+  // auth failures — coming back online won't refresh an expired Drive token.
+  useEffect(() => {
+    if (!loadError || needsReconnect || needsSetup) return;
+    const onOnline = () => handleRetry();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [loadError, needsReconnect, needsSetup, handleRetry]);
 
   const handleProgress = useCallback(() => {
     if (!videoRef.current || !videoRef.current.duration) return;
@@ -805,6 +909,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         onPause={handlePause}
         onEnded={handleEnded}
         onProgress={handleProgress}
+        onWaiting={handleWaiting}
+        onPlaying={handlePlaying}
+        onCanPlay={handleCanPlay}
         onClick={togglePlay}
         onDoubleClick={handleDoubleClick}
         onLoadedMetadata={(e) => {
@@ -817,7 +924,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             videoHeight: v.videoHeight,
           });
         }}
-        onStalled={() => console.warn("[video] stalled", videoSrc)}
+        onStalled={() => {
+          console.warn("[video] stalled", videoSrc);
+          setIsBuffering(true);
+        }}
+        onSeeking={() => setIsBuffering(true)}
+        onSeeked={() => setIsBuffering(false)}
         onAbort={() => console.warn("[video] abort", videoSrc)}
         onError={(e) => {
           const v = e.currentTarget;
@@ -833,6 +945,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             networkState: v.networkState,
             readyState: v.readyState,
           });
+          void surfaceLoadError();
         }}
       />
 
@@ -944,7 +1057,49 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         </div>
       )}
 
-      {!isPlaying && !hasEnded && videoDuration > 0 && (
+      {isBuffering && !hasEnded && !loadError && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="size-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary" />
+        </div>
+      )}
+
+      {loadError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <div
+            className="flex max-w-sm flex-col items-center gap-4 px-6 text-center"
+            style={{ animation: `fadeInUp 400ms ${EASE_OUT} both` }}
+          >
+            <p className="font-sans text-sm text-white/90">{loadError}</p>
+            {needsSetup ? (
+              <button
+                onClick={() => navigate("/settings")}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <GoogleDriveLogo className="size-4" weight="fill" />
+                Go to Settings
+              </button>
+            ) : needsReconnect ? (
+              <button
+                onClick={handleReconnect}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <GoogleDriveLogo className="size-4" weight="fill" />
+                Reconnect Google Drive
+              </button>
+            ) : (
+              <button
+                onClick={handleRetry}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Clockwise className="size-4" weight="bold" />
+                Try again
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isPlaying && !hasEnded && !isBuffering && !loadError && videoDuration > 0 && (
         <button
           onClick={togglePlay}
           className="absolute inset-0 flex items-center justify-center"

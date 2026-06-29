@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageVisible } from "@/hooks/usePageVisible";
 import { useSettings } from "@/hooks/useSettings";
@@ -20,11 +20,24 @@ import {
   TrashIcon as Trash,
   WarningCircleIcon as WarningCircle,
   XIcon as X,
+  CloudIcon as Cloud,
+  KeyIcon as Key,
+  LinkSimpleIcon as Link,
+  LinkBreakIcon as LinkBreak,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { LibraryStats } from "@/types";
 import { getLibraryStats, deleteAllData } from "@/lib/store";
+import {
+  driveCredentialsStatus,
+  driveSetCredentials,
+  driveClearCredentials,
+  driveAuthStatus,
+  driveConnect,
+  driveDisconnect,
+} from "@/lib/drive";
 import { EASE_OUT } from "@/lib/constants";
+import { DriveSetupGuide } from "@/components/DriveSetupGuide";
 import { useUpdater } from "@/hooks/useUpdater";
 import { getVersion } from "@tauri-apps/api/app";
 
@@ -358,6 +371,267 @@ function UpdatesSection({ index }: { index: number }) {
   );
 }
 
+function errMsg(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+function CredInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block px-2">
+      <span className="mb-1 block font-sans text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        className={cn(
+          "w-full rounded-lg border border-border bg-secondary px-3 py-2",
+          "font-mono text-xs text-foreground placeholder:text-muted-foreground/40",
+          "outline-none transition-colors focus:border-primary",
+        )}
+      />
+    </label>
+  );
+}
+
+function GoogleDriveSection({ index }: { index: number }) {
+  const [credsSet, setCredsSet] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const set = await driveCredentialsStatus();
+      setCredsSet(set);
+      setConnected(set ? (await driveAuthStatus()).connected : false);
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // The Settings page stays mounted (kept-alive), so re-check status whenever it
+  // becomes visible again — e.g. after reconnecting Drive from a course page.
+  usePageVisible("/settings", refresh);
+
+  const run = useCallback(
+    async (fn: () => Promise<unknown>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await fn();
+        await refresh();
+      } catch (e) {
+        setError(errMsg(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  // Connect is special: the Rust side blocks until the browser redirect arrives
+  // (or its long internal timeout fires), and closing the browser sends no
+  // signal. A generation token lets the user abort the "Check your browser…"
+  // state — a later-resolving stale attempt is then ignored.
+  const [connecting, setConnecting] = useState(false);
+  const connectGen = useRef(0);
+
+  const connect = useCallback(async () => {
+    const gen = ++connectGen.current;
+    setConnecting(true);
+    setError(null);
+    try {
+      await driveConnect();
+      if (gen !== connectGen.current) return; // aborted or superseded
+      await refresh();
+    } catch (e) {
+      if (gen !== connectGen.current) return;
+      setError(errMsg(e));
+    } finally {
+      if (gen === connectGen.current) setConnecting(false);
+    }
+  }, [refresh]);
+
+  const cancelConnect = useCallback(() => {
+    connectGen.current++; // invalidate the in-flight attempt
+    setConnecting(false);
+    setError(null);
+  }, []);
+
+  const saveCreds = () =>
+    run(async () => {
+      if (!clientId.trim() || !clientSecret.trim() || !apiKey.trim()) {
+        throw new Error("All three fields are required");
+      }
+      await driveSetCredentials(clientId.trim(), clientSecret.trim(), apiKey.trim());
+      setEditing(false);
+      setClientSecret("");
+    });
+
+  const showForm = !credsSet || editing;
+
+  return (
+    <SectionCard
+      title="Google Drive"
+      icon={<Cloud className="size-4 text-info" weight="bold" />}
+      index={index}
+    >
+      <p className="px-2 pb-2 font-sans text-xs text-muted-foreground">
+        Stream courses from a Google Drive folder. Uses your own Google Cloud OAuth
+        credentials (drive.readonly), stored securely in your system keychain.
+      </p>
+
+      {showForm ? (
+        <div className="flex flex-col gap-3 py-1">
+          <DriveSetupGuide />
+          <CredInput
+            label="OAuth Client ID (Desktop app)"
+            value={clientId}
+            onChange={setClientId}
+            placeholder="xxxxx.apps.googleusercontent.com"
+          />
+          <CredInput
+            label="OAuth Client Secret"
+            value={clientSecret}
+            onChange={setClientSecret}
+            type="password"
+            placeholder="GOCSPX-…"
+          />
+          <CredInput
+            label="API Key (Picker API)"
+            value={apiKey}
+            onChange={setApiKey}
+            placeholder="AIza…"
+          />
+          <div className="flex justify-end gap-2 px-2">
+            {editing && (
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  setError(null);
+                }}
+                className="rounded-lg px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={saveCreds}
+              disabled={busy}
+              className={cn(
+                "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
+                "transition-colors hover:bg-primary/90 disabled:opacity-50",
+              )}
+            >
+              Save credentials
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <SettingRow
+            icon={<Key className="size-4" />}
+            label="Credentials"
+            description="Stored in your system keychain"
+          >
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEditing(true)}
+                disabled={busy || connecting}
+                className="rounded-lg border border-border px-3 py-1.5 font-sans text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => run(driveClearCredentials)}
+                disabled={busy || connecting}
+                className="rounded-lg border border-destructive/30 px-3 py-1.5 font-sans text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+          </SettingRow>
+
+          <SettingRow
+            icon={connected ? <Link className="size-4" /> : <LinkBreak className="size-4" />}
+            label={connected ? "Connected" : "Not connected"}
+            description={
+              connected
+                ? "Your Google account is linked"
+                : "Connect to sign in (opens your browser)"
+            }
+          >
+            {connected ? (
+              <button
+                onClick={() => run(driveDisconnect)}
+                disabled={busy}
+                className="rounded-lg border border-border px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            ) : connecting ? (
+              <div className="flex items-center gap-2">
+                <span className="font-sans text-sm text-muted-foreground">
+                  Check your browser…
+                </span>
+                <button
+                  onClick={cancelConnect}
+                  className="rounded-lg border border-border px-3 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={connect}
+                disabled={busy}
+                className={cn(
+                  "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
+                  "transition-colors hover:bg-primary/90 disabled:opacity-50",
+                )}
+              >
+                Connect
+              </button>
+            )}
+          </SettingRow>
+        </>
+      )}
+
+      {error && (
+        <p className="px-2 pt-1 font-sans text-xs text-destructive">{error}</p>
+      )}
+    </SectionCard>
+  );
+}
+
 export function Settings({ className }: SettingsProps) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
@@ -525,10 +799,12 @@ export function Settings({ className }: SettingsProps) {
 
         <UpdatesSection index={2} />
 
+        <GoogleDriveSection index={3} />
+
         <SectionCard
           title="Danger Zone"
           icon={<WarningCircle className="size-4 text-destructive" weight="bold" />}
-          index={3}
+          index={4}
         >
           <div className="flex items-center justify-between gap-4 rounded-lg px-2 py-3">
             <div className="flex items-center gap-3">

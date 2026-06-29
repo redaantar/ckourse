@@ -17,6 +17,7 @@ import {
   SidebarSimpleIcon as SidebarSimple,
   BookmarkSimpleIcon as BookmarkSimple,
   HeartIcon as Heart,
+  GoogleDriveLogoIcon as GoogleDriveLogo,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { reportError } from "@/lib/posthog";
@@ -737,6 +738,15 @@ function CourseDetailInner({
                 by {course.author}
               </p>
               {getStatusBadge(course.status)}
+              {course.folderPath.startsWith("gdrive:") && (
+                <span
+                  className="flex items-center gap-1 rounded-full border border-border/60 bg-secondary px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground"
+                  title="Loaded from Google Drive"
+                >
+                  <GoogleDriveLogo className="size-3.5 text-info" weight="fill" />
+                  Google Drive
+                </span>
+              )}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-3 sm:gap-5">
