@@ -4,6 +4,7 @@ import type { AppSettings } from "@/types";
 
 const DEFAULTS: AppSettings = {
   autoplay_next: true,
+  autoplay_delay_secs: 5,
   resume_position: true,
   default_speed: 1,
   default_volume: 100,
@@ -11,9 +12,20 @@ const DEFAULTS: AppSettings = {
   skip_backward_secs: 10,
 };
 
+export const AUTOPLAY_DELAY_MAX = 15;
+
+function clampDelay(raw: string | undefined): number {
+  const n = Number(raw);
+  if (raw === undefined || raw === "" || Number.isNaN(n)) return 5;
+  return Math.min(Math.max(Math.round(n), 0), AUTOPLAY_DELAY_MAX);
+}
+
 function parse(raw: Record<string, string>): AppSettings {
   return {
     autoplay_next: raw.autoplay_next !== "false",
+    // 0 is a valid delay (instant skip), so coerce explicitly rather than
+    // falling back through `|| 5`, which would turn 0 into the default.
+    autoplay_delay_secs: clampDelay(raw.autoplay_delay_secs),
     resume_position: raw.resume_position !== "false",
     default_speed: Number(raw.default_speed) || 1,
     default_volume: Number(raw.default_volume) || 100,

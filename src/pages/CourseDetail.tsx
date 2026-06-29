@@ -684,6 +684,7 @@ function CourseDetailInner({
             accentColor={course.accentColor}
             autoPlay={autoPlay}
             autoSkipEnabled={settings.autoplay_next}
+            autoSkipSeconds={settings.autoplay_delay_secs}
             initialTime={settingsLoaded ? (settings.resume_position ? activeLesson?.lastPosition : 0) : null}
             defaultSpeed={settings.default_speed}
             defaultVolume={settings.default_volume}

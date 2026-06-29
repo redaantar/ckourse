@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageVisible } from "@/hooks/usePageVisible";
-import { useSettings } from "@/hooks/useSettings";
+import { useSettings, AUTOPLAY_DELAY_MAX } from "@/hooks/useSettings";
 import {
   GearSixIcon as GearSix,
   PlayIcon as Play,
@@ -17,6 +17,7 @@ import {
   FastForwardIcon as FastForward,
   SpeakerHighIcon as SpeakerHigh,
   SkipForwardIcon as SkipForward,
+  TimerIcon as Timer,
   TrashIcon as Trash,
   WarningCircleIcon as WarningCircle,
   XIcon as X,
@@ -697,6 +698,30 @@ export function Settings({ className }: SettingsProps) {
               onChange={(v) => update("autoplay_next", String(v))}
             />
           </SettingRow>
+          {settings.autoplay_next && (
+            <SettingRow
+              icon={<Timer className="size-4" />}
+              label="Autoplay delay"
+              description="How long to wait before the next lesson starts"
+            >
+              <div className="flex items-center gap-2.5">
+                <input
+                  type="range"
+                  min={0}
+                  max={AUTOPLAY_DELAY_MAX}
+                  step={1}
+                  value={settings.autoplay_delay_secs}
+                  onChange={(e) => update("autoplay_delay_secs", e.target.value)}
+                  className="h-1.5 w-24 cursor-pointer accent-primary"
+                />
+                <span className="w-12 font-mono text-xs text-muted-foreground">
+                  {settings.autoplay_delay_secs === 0
+                    ? "Instant"
+                    : `${settings.autoplay_delay_secs}s`}
+                </span>
+              </div>
+            </SettingRow>
+          )}
           <SettingRow
             icon={<ArrowsClockwise className="size-4" />}
             label="Resume from last position"
