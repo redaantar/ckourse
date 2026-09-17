@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import LottieLib from "lottie-react";
-
-// Handle CJS/ESM default export interop: in some Vite/Rollup build modes
-// lottie-react resolves to the module namespace object rather than the component
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Lottie: React.ComponentType<{ animationData: unknown; loop?: boolean; className?: string }> = (LottieLib as any).default ?? LottieLib;
+import { useLottie } from "lottie-react";
 import {
   FolderOpenIcon as FolderOpen,
   UploadSimpleIcon as UploadSimple,
@@ -118,6 +113,12 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [category, setCategory] = useState<string>("other");
   const [accentColor, setAccentColor] = useState(accentColors[0]);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+
+  const { View: importingAnimationView } = useLottie({
+    animationData: loadingAnimation,
+    loop: true,
+    className: "size-40",
+  });
 
   useEffect(() => {
     getCustomCategories().then(setCustomCategories).catch(() => {});
@@ -318,11 +319,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
   if (isImporting) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
-        <Lottie
-          animationData={loadingAnimation}
-          loop
-          className="size-40"
-        />
+        {importingAnimationView}
         <p className="mt-2 font-sans text-sm font-semibold text-foreground">
           Importing course...
         </p>
@@ -432,6 +429,12 @@ function FolderSelectStep({
   onImportDrive: () => void;
   onImportServer: () => void;
 }) {
+  const { View: scanningAnimationView } = useLottie({
+    animationData: loadingAnimation,
+    loop: true,
+    className: "size-28",
+  });
+
   return (
     <div style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}>
       <div
@@ -457,11 +460,7 @@ function FolderSelectStep({
         <div className="relative flex flex-col items-center gap-4 px-6 py-16">
           {isLoading ? (
             <>
-              <Lottie
-                animationData={loadingAnimation}
-                loop
-                className="size-28"
-              />
+              {scanningAnimationView}
               <div className="text-center">
                 <p className="font-sans text-sm font-semibold text-foreground">
                   Scanning folder...

@@ -24,6 +24,7 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 - ▶️ **Built-in video player** — native HTML5 player with subtitle support, timestamp navigation, and autoplay with a configurable delay between lessons
 - 📊 **Progress tracking** — per-lesson completion, per-course progress bar, resume from exactly where you stopped
 - 📝 **Timestamped notes** — add notes tied to specific timestamps and navigate back to them instantly, even across lessons
+- 📄 **PDF viewer** — read PDF attachments inside the app, for local, server and Drive courses alike; each lesson's own files show up next to it in the Resources tab
 - 🔖 **Bookmarks** — bookmark lessons for quick access from a dedicated page
 - 🗂️ **Course library** — a clean dashboard of all your imported courses with progress at a glance
 - 🎉 **Completion celebration** — canvas particle animation when you finish a course
@@ -31,7 +32,7 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 - 🔄 **Auto-update** — the app checks for new releases and offers to update in place
 
 ### 🚧 v2 — Planned
-- 📄 **PDF/resource viewer** — read course attachments without leaving the app
+- 📄 **Resource viewer** — preview other attachment types (text, images, Markdown) without leaving the app
 - 🔍 **Search** — search across all courses, lessons, and your personal notes
 
 ---
@@ -46,6 +47,7 @@ Your media player doesn't know what "Section 4 - Lesson 12" means. Your file man
 | Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) + [Radix UI](https://www.radix-ui.com/) |
 | Icons | [Phosphor Icons](https://phosphoricons.com/) |
 | Charts | [Recharts](https://recharts.org/) |
+| PDF rendering | [PDF.js](https://mozilla.github.io/pdf.js/) |
 | Analytics | [PostHog](https://posthog.com/) (optional, env-configured) |
 | Backend | [Rust](https://www.rust-lang.org/) |
 | Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled) |

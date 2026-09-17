@@ -26,6 +26,7 @@
     "clsx": "^2.1.1",
     "lottie-react": "^2.4.1",
     "lucide-react": "^1.8.0",
+    "pdfjs-dist": "^5.7.284",
     "posthog-js": "^1.369.3",
     "radix-ui": "^1.4.3",
     "react": "^19.2.5",

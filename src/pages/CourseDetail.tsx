@@ -7,6 +7,7 @@ import {
   CheckCircleIcon as CheckCircle,
   ClockIcon as Clock,
   FileTextIcon as FileText,
+  FilePdfIcon as FilePdf,
   FileIcon as File,
   LinkIcon as LinkSimple,
   ArrowLeftIcon as ArrowLeft,
@@ -30,9 +31,10 @@ import { SectionAccordion } from "@/components/course-detail/SectionAccordion";
 import { NotesPanel } from "@/components/course-detail/NotesPanel";
 import { CourseEditPanel } from "@/components/course-detail/CourseEditPanel";
 import { CourseCelebration } from "@/components/course-detail/CourseCelebration";
+import { PdfViewer } from "@/components/course-detail/PdfViewer";
 import { EASE_OUT, SNAPPY } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
-import type { Note, Course, CourseDetail as CourseDetailData, Lesson, Subtitle } from "@/types";
+import type { Note, Course, CourseDetail as CourseDetailData, Lesson, Resource, Subtitle } from "@/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useCourseTitles } from "@/components/app-shell/CourseTitleContext";
 import {
@@ -81,8 +83,13 @@ function getStatusBadge(status: string) {
   }
 }
 
+/** Remote resources (`srv:` / `gdrive:`) have no local path the OS could open. */
+function isRemotePath(path: string): boolean {
+  return path.startsWith("srv:") || path.startsWith("gdrive:");
+}
+
 const resourceIcons: Record<string, React.ElementType> = {
-  pdf: FileText,
+  pdf: FilePdf,
   document: FileText,
   text: FileText,
   link: LinkSimple,
@@ -248,6 +255,12 @@ function CourseDetailInner({
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"resources" | "notes">("notes");
+  const [openPdf, setOpenPdf] = useState<Resource | null>(null);
+  const courseResources = courseData.resources.filter((r) => r.lessonId == null);
+  const lessonResources = activeLesson
+    ? courseData.resources.filter((r) => r.lessonId === activeLesson.id)
+    : [];
+  const hasResources = courseResources.length > 0 || lessonResources.length > 0;
   const [notes, setNotes] = useState<Note[]>([]);
   const lessonNotes = activeLesson
     ? notes.filter((n) => n.lessonId === activeLesson.id)
@@ -583,18 +596,37 @@ function CourseDetailInner({
     });
   }, [pendingTimestampNav, activeLesson, allLessons, course.id, onDataChange]);
 
-  const handleOpenResource = async (path: string) => {
+  const handleOpenResource = (resource: Resource) => {
+    if (resource.type === "pdf") {
+      videoPlayerRef.current?.pause();
+      setOpenPdf(resource);
+      return;
+    }
+    if (isRemotePath(resource.path)) {
+      toast.error("Can't open this resource", {
+        description: "Only PDFs can be opened from a server or Google Drive course.",
+      });
+      return;
+    }
+    void openExternally(resource.path);
+  };
+
+  const openExternally = async (path: string) => {
     try {
       await openPath(path);
     } catch (err) {
-      // Expected when the file was moved/deleted outside the app — debug-level.
       console.debug("openPath failed", err);
+      const message = err instanceof Error ? err.message : String(err);
+      const forbidden = message.startsWith("Not allowed to open path");
       reportError(err, "CourseDetail.handleOpenResource", {
         path,
-        severity: "expected",
+        severity: forbidden ? "error" : "expected",
       });
+      const fileName = path.split(/[\\/]/).pop() || path;
       toast.error("Couldn't open resource", {
-        description: "The file may have been moved or deleted.",
+        description: forbidden
+          ? `Ckourse isn't allowed to open "${fileName}". Please report this issue.`
+          : `No app could open "${fileName}". Make sure the file still exists and its drive is connected.`,
       });
     }
   };
@@ -782,7 +814,7 @@ function CourseDetailInner({
 
           <div>
             <div className="mb-3 flex items-center gap-1">
-              {courseData.resources.length > 0 && (
+              {hasResources && (
                 <button
                   onClick={() => setActiveTab("resources")}
                   className={cn(
@@ -796,6 +828,11 @@ function CourseDetailInner({
                   <span className="flex items-center gap-1.5">
                     <FolderOpen className="size-3.5" />
                     Resources
+                    {lessonResources.length > 0 && (
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {lessonResources.length}
+                      </span>
+                    )}
                   </span>
                 </button>
               )}
@@ -821,24 +858,24 @@ function CourseDetailInner({
               </button>
             </div>
 
-            {activeTab === "resources" && courseData.resources.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {courseData.resources.map((resource) => {
-                  const Icon = resourceIcons[resource.type] || File;
-                  return (
-                    <button
-                      key={resource.id}
-                      onClick={() => handleOpenResource(resource.path)}
-                      className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-all duration-150 hover:scale-[1.02] hover:bg-secondary active:scale-[0.98]"
-                      style={{ transitionTimingFunction: SNAPPY }}
-                    >
-                      <Icon className="size-3.5 text-muted-foreground" />
-                      <span className="font-sans text-xs font-medium text-foreground">
-                        {resource.title}
-                      </span>
-                    </button>
-                  );
-                })}
+            {activeTab === "resources" && hasResources && (
+              <div className="flex flex-col gap-4">
+                {lessonResources.length > 0 && (
+                  <ResourceGroup
+                    title="This lesson"
+                    resources={lessonResources}
+                    onOpen={handleOpenResource}
+                    showTitle={courseResources.length > 0}
+                  />
+                )}
+                {courseResources.length > 0 && (
+                  <ResourceGroup
+                    title="Course"
+                    resources={courseResources}
+                    onOpen={handleOpenResource}
+                    showTitle={lessonResources.length > 0}
+                  />
+                )}
               </div>
             )}
 
@@ -895,6 +932,16 @@ function CourseDetailInner({
         </div>
       </div>
 
+      {openPdf && (
+        <PdfViewer
+          resource={openPdf}
+          onClose={() => setOpenPdf(null)}
+          onOpenExternally={
+            isRemotePath(openPdf.path) ? undefined : () => void openExternally(openPdf.path)
+          }
+        />
+      )}
+
       <CourseCelebration
         show={showCelebration}
         onDone={() => setShowCelebration(false)}
@@ -949,6 +996,41 @@ function CourseDetailInner({
           `}</style>
         </div>
       )}
+    </div>
+  );
+}
+
+interface ResourceGroupProps {
+  title: string;
+  resources: Resource[];
+  onOpen: (resource: Resource) => void;
+  showTitle: boolean;
+}
+
+function ResourceGroup({ title, resources, onOpen, showTitle }: ResourceGroupProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      {showTitle && (
+        <span className="font-sans text-xs font-medium text-muted-foreground">{title}</span>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {resources.map((resource) => {
+          const Icon = resourceIcons[resource.type] || File;
+          return (
+            <button
+              key={resource.id}
+              onClick={() => onOpen(resource)}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-all duration-150 hover:scale-[1.02] hover:bg-secondary active:scale-[0.98]"
+              style={{ transitionTimingFunction: SNAPPY }}
+            >
+              <Icon className="size-3.5 text-muted-foreground" />
+              <span className="font-sans text-xs font-medium text-foreground">
+                {resource.title}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

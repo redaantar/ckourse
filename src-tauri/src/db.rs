@@ -65,6 +65,8 @@ pub struct Lesson {
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
     pub id: i64,
+    /// `None` for course-level resources, the owning lesson otherwise.
+    pub lesson_id: Option<i64>,
     pub title: String,
     #[serde(rename = "type")]
     pub resource_type: String,
@@ -522,18 +524,22 @@ pub fn get_course_detail(conn: &Connection, course_id: i64) -> SqlResult<Option<
         })
         .collect();
 
-    // Get resources
+    // Get resources — course-level first, then lesson-level. The frontend splits
+    // them by `lesson_id` so the Resources tab can show the active lesson's files.
     let mut res_stmt = conn.prepare(
-        "SELECT id, title, resource_type, path FROM resources WHERE course_id = ?1 AND lesson_id IS NULL",
+        "SELECT id, lesson_id, title, resource_type, path FROM resources
+         WHERE course_id = ?1
+         ORDER BY lesson_id IS NOT NULL, lesson_id, id",
     )?;
 
     let resources: Vec<Resource> = res_stmt
         .query_map(params![course_id], |row| {
             Ok(Resource {
                 id: row.get(0)?,
-                title: row.get(1)?,
-                resource_type: row.get(2)?,
-                path: row.get(3)?,
+                lesson_id: row.get(1)?,
+                title: row.get(2)?,
+                resource_type: row.get(3)?,
+                path: row.get(4)?,
             })
         })?
         .collect::<SqlResult<Vec<_>>>()?;
@@ -550,6 +556,16 @@ pub fn get_course_detail(conn: &Connection, course_id: i64) -> SqlResult<Option<
         resources,
         sections,
     }))
+}
+
+/// Stored path (local path, `srv:` or `gdrive:` URI) of a resource.
+pub fn get_resource_path(conn: &Connection, resource_id: i64) -> SqlResult<Option<String>> {
+    let mut stmt = conn.prepare("SELECT path FROM resources WHERE id = ?1")?;
+    let mut rows = stmt.query(params![resource_id])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get(0)?)),
+        None => Ok(None),
+    }
 }
 
 pub fn get_course_by_id(conn: &Connection, course_id: i64) -> SqlResult<Option<Course>> {
@@ -1584,4 +1600,79 @@ pub fn count_courses_for_server(conn: &Connection, id: &str) -> SqlResult<i64> {
         params![pattern],
         |row| row.get(0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{
+        Confidence, ParsedCourse, ParsedLesson, ParsedResource, ParsedSection, ResourceType,
+    };
+
+    fn temp_db() -> (Connection, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ckourse-test-{}", uuid::Uuid::new_v4()));
+        let conn = init_db(&dir).expect("init db");
+        (conn, dir)
+    }
+
+    fn pdf(title: &str, path: &str) -> ParsedResource {
+        ParsedResource {
+            title: title.to_string(),
+            path: path.to_string(),
+            resource_type: ResourceType::Pdf,
+        }
+    }
+
+    #[test]
+    fn course_detail_includes_lesson_resources_with_their_lesson() {
+        let (conn, dir) = temp_db();
+        let parsed = ParsedCourse {
+            title: "Course".into(),
+            description: None,
+            thumbnail_path: None,
+            sections: vec![ParsedSection {
+                title: "Section".into(),
+                order: 0,
+                lessons: vec![ParsedLesson {
+                    title: "Lesson".into(),
+                    order: 0,
+                    video_path: "/c/01.mp4".into(),
+                    duration_secs: 60,
+                    subtitles: vec![],
+                    resources: vec![pdf("Slides", "/c/01.pdf")],
+                }],
+            }],
+            resources: vec![pdf("Handbook", "/c/handbook.pdf")],
+            confidence: Confidence::High,
+            confidence_reasons: vec![],
+            total_video_count: 1,
+            folder_path: "/c".into(),
+        };
+        let input = SaveCourseInput {
+            title: "Course".into(),
+            author: String::new(),
+            accent_color: "#000000".into(),
+            category: "other".into(),
+        };
+        let course_id = save_parsed_course(&conn, &parsed, &input).unwrap();
+        let detail = get_course_detail(&conn, course_id).unwrap().unwrap();
+        let lesson_id = detail.sections[0].lessons[0].id;
+
+        assert_eq!(detail.resources.len(), 2);
+        // Course-level resources come first.
+        assert_eq!(detail.resources[0].title, "Handbook");
+        assert_eq!(detail.resources[0].lesson_id, None);
+        assert_eq!(detail.resources[1].title, "Slides");
+        assert_eq!(detail.resources[1].lesson_id, Some(lesson_id));
+
+        let slides_id = detail.resources[1].id;
+        assert_eq!(
+            get_resource_path(&conn, slides_id).unwrap().as_deref(),
+            Some("/c/01.pdf")
+        );
+        assert_eq!(get_resource_path(&conn, 9_999).unwrap(), None);
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
