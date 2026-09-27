@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod drive_protocol;
 mod google;
+mod media_server;
 mod parser;
 mod remote;
 mod remote_protocol;
@@ -51,6 +52,9 @@ pub fn run() {
             });
 
             remote::init(app.handle().clone(), servers);
+
+            #[cfg(target_os = "linux")]
+            media_server::start();
 
             Ok(())
         })
@@ -104,6 +108,7 @@ pub fn run() {
             commands::test_server,
             commands::browse_server,
             commands::parse_server_folder,
+            media_server::media_server_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

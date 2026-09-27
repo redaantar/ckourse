@@ -28,7 +28,7 @@ pub fn handle(
     });
 }
 
-async fn serve(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+pub(crate) async fn serve(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let uri = match decode_uri(&request) {
         Some(u) if !u.is_empty() => u,
         _ => return status_only(StatusCode::BAD_REQUEST),

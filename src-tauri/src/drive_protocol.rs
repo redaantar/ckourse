@@ -33,7 +33,7 @@ pub fn handle(
     });
 }
 
-async fn serve(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+pub(crate) async fn serve(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let file_id = match decode_file_id(&request) {
         Some(id) if !id.is_empty() => id,
         _ => return status_only(StatusCode::BAD_REQUEST),

@@ -103,7 +103,7 @@ fn serve_range(
         .unwrap_or_else(|_| status_only(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
-fn decode_path(request: &Request<Vec<u8>>) -> Option<PathBuf> {
+pub(crate) fn decode_path(request: &Request<Vec<u8>>) -> Option<PathBuf> {
     let uri = request.uri();
     let raw = uri.path().trim_start_matches('/');
     let decoded = percent_decode_str(raw).decode_utf8().ok()?;
@@ -118,7 +118,7 @@ fn decode_path(request: &Request<Vec<u8>>) -> Option<PathBuf> {
     }
 }
 
-fn parse_range(header_value: &HeaderValue, file_size: u64) -> Option<(u64, u64)> {
+pub(crate) fn parse_range(header_value: &HeaderValue, file_size: u64) -> Option<(u64, u64)> {
     let s = header_value.to_str().ok()?;
     let s = s.strip_prefix("bytes=")?;
     let (a, b) = s.split_once('-')?;
@@ -143,7 +143,7 @@ fn parse_range(header_value: &HeaderValue, file_size: u64) -> Option<(u64, u64)>
     Some((start, end))
 }
 
-fn guess_mime(path: &Path) -> &'static str {
+pub(crate) fn guess_mime(path: &Path) -> &'static str {
     match path
         .extension()
         .and_then(|e| e.to_str())

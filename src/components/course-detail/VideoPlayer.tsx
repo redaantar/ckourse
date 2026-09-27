@@ -7,7 +7,6 @@ import {
   forwardRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import {
   PlayIcon as Play,
@@ -34,6 +33,8 @@ import { getSubtitleVtt } from "@/lib/store";
 import { driveAuthStatus, driveConnect, driveCredentialsStatus } from "@/lib/drive";
 import { reportError } from "@/lib/posthog";
 import { EASE_OUT } from "@/lib/constants";
+import { lessonVideoSrc, redactMediaSrc } from "@/lib/media";
+import { useMediaServerUrl } from "@/hooks/useMediaServerUrl";
 
 interface VideoPlayerProps {
   lesson: Lesson | undefined;
@@ -118,7 +119,7 @@ function safePlay(video: HTMLVideoElement | null, ctx: SafePlayContext) {
       lessonId: ctx.lessonId,
       videoPath: ctx.videoPath,
       videoExtension: getFileExtension(ctx.videoPath ?? video.currentSrc),
-      currentSrc: video.currentSrc,
+      currentSrc: redactMediaSrc(video.currentSrc),
       readyState: video.readyState,
       networkState: video.networkState,
       videoWidth: video.videoWidth,
@@ -282,6 +283,21 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const starvedRef = useRef(false);
   // Mirrors isSeeking for handlers that shouldn't re-render to see it.
   const isSeekingRef = useRef(false);
+  // Playhead at the last timeupdate, to tell whether playback is moving.
+  const lastPlayheadRef = useRef(0);
+
+  // Only show the spinner once buffering has lasted a moment, so brief
+  // `waiting` blips (a speed change on Linux fires one while playback carries
+  // on) don't flash it over a playing video.
+  const [showSpinner, setShowSpinner] = useState(false);
+  useEffect(() => {
+    if (!isBuffering) {
+      setShowSpinner(false);
+      return;
+    }
+    const id = setTimeout(() => setShowSpinner(true), 300);
+    return () => clearTimeout(id);
+  }, [isBuffering]);
 
   const isRemoteSource =
     !!lesson &&
@@ -327,17 +343,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const preferredSubLangRef = useRef<string | null>(null);
   const playbackSpeedRef = useRef(playbackSpeed);
 
-  // Each source has its own streaming protocol: local lessons read from disk via
-  // `stream://`, Drive lessons store `gdrive:<fileId>`, and lessons on a saved
-  // server store `srv:<serverId>:<path>`. All three support range requests, so
-  // seeking works the same way everywhere.
-  const videoSrc = lesson
-    ? lesson.videoPath.startsWith("gdrive:")
-      ? convertFileSrc(lesson.videoPath.slice("gdrive:".length), "gdrive")
-      : lesson.videoPath.startsWith("srv:")
-        ? convertFileSrc(lesson.videoPath.slice("srv:".length), "srv")
-        : convertFileSrc(lesson.videoPath, "stream")
-    : undefined;
+  // `undefined` until we know whether videos go through the Linux media server.
+  const mediaServerUrl = useMediaServerUrl();
+  const videoSrc =
+    lesson && mediaServerUrl !== undefined
+      ? lessonVideoSrc(lesson.videoPath, mediaServerUrl)
+      : undefined;
 
   // Reset state when lesson changes
   useEffect(() => {
@@ -684,7 +695,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       safeDomPromise(
         videoRef.current.requestPictureInPicture(),
         "VideoPlayer.requestPiP",
-        { videoSrc: videoRef.current.currentSrc },
+        { videoSrc: redactMediaSrc(videoRef.current.currentSrc) },
       );
     }
   }, []);
@@ -744,10 +755,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     if (!videoRef.current) return;
     // While dragging the seek bar the drag owns the playhead display.
     if (isSeekingRef.current) return;
-    const t = videoRef.current.currentTime;
+    const v = videoRef.current;
+    const t = v.currentTime;
     setVideoTime(t);
     onTimeUpdate?.(t);
     updateBuffered();
+    // A moving playhead means we're not buffering, whatever the events or
+    // readyState say: after a speed change, WebKitGTK's HTTP loader fires
+    // `waiting` and then reports HAVE_CURRENT_DATA for as long as the video
+    // plays, never `playing`, which would leave the spinner up for good.
+    if (!v.paused && !v.seeking && !starvedRef.current && t !== lastPlayheadRef.current) {
+      setIsBuffering(false);
+    }
+    lastPlayheadRef.current = t;
   }, [onTimeUpdate, updateBuffered]);
 
   const handleDurationChange = useCallback(() => {
@@ -993,9 +1013,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     return (
       <div className="relative overflow-hidden rounded-xl border border-border bg-black">
         <div className="flex aspect-video items-center justify-center bg-card">
-          <p className="font-sans text-sm text-muted-foreground">
-            No lesson selected
-          </p>
+          {!lesson && (
+            <p className="font-sans text-sm text-muted-foreground">
+              No lesson selected
+            </p>
+          )}
         </div>
       </div>
     );
@@ -1036,9 +1058,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             videoHeight: v.videoHeight,
           });
         }}
-        onStalled={() => {
+        onStalled={(e) => {
           console.warn("[video] stalled", videoSrc);
-          setIsBuffering(true);
+          // `stalled` only means the network went quiet. Over HTTP (the Linux
+          // media server) WebKit pauses downloading on purpose once it has
+          // enough buffered, so only show the spinner if playback is short of
+          // data too — otherwise it sticks over a video that's playing fine.
+          const v = e.currentTarget;
+          if (!v.paused && v.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+            setIsBuffering(true);
+          }
         }}
         onSeeking={() => setIsBuffering(true)}
         onSeeked={() => {
@@ -1174,7 +1203,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         </div>
       )}
 
-      {isBuffering && !hasEnded && !loadError && (
+      {showSpinner && !hasEnded && !loadError && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="size-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary" />
         </div>
