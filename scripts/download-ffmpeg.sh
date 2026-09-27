@@ -14,6 +14,15 @@ mkdir -p "$DEST"
 NM="node_modules"
 CI_MODE="${1:-}"
 
+# ffmpeg-static fetches its binary in an npm install script, which npm may skip.
+FFMPEG_SRC="$NM/ffmpeg-static/ffmpeg"
+[[ "$(uname)" == "MINGW"* || "$(uname)" == "MSYS"* ]] && FFMPEG_SRC="$FFMPEG_SRC.exe"
+if [[ ! -f "$FFMPEG_SRC" ]]; then
+  echo "✗ $FFMPEG_SRC not found — ffmpeg-static's install script did not run." >&2
+  echo "  Fix: node $NM/ffmpeg-static/install.js   (then re-run this script)" >&2
+  exit 1
+fi
+
 if [[ "$(uname)" == "Darwin" ]]; then
   if [[ "$CI_MODE" == "--ci" ]]; then
     # Universal build needs both arch-specific AND a combined universal binary.
@@ -51,4 +60,28 @@ elif [[ "$(uname)" == "MINGW"* ]] || [[ "$(uname)" == "MSYS"* ]]; then
   cp "$NM/ffmpeg-static/ffmpeg.exe"                  "$DEST/ffmpeg-x86_64-pc-windows-msvc.exe"
   echo "✓ $DEST/ffprobe-x86_64-pc-windows-msvc.exe"
   echo "✓ $DEST/ffmpeg-x86_64-pc-windows-msvc.exe"
+
+elif [[ "$(uname)" == "Linux" ]]; then
+  case "$(uname -m)" in
+    x86_64) TRIPLE="x86_64-unknown-linux-gnu"; FFPROBE_DIR="x64" ;;
+    aarch64|arm64) TRIPLE="aarch64-unknown-linux-gnu"; FFPROBE_DIR="arm64" ;;
+    *) echo "✗ Unsupported Linux architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+  FFPROBE_SRC="$NM/ffprobe-static/bin/linux/$FFPROBE_DIR/ffprobe"
+  if [[ ! -f "$FFPROBE_SRC" ]]; then
+    echo "✗ $FFPROBE_SRC not found — ffprobe-static has no build for this architecture." >&2
+    echo "  Fix: copy a static ffprobe to $DEST/ffprobe-$TRIPLE manually." >&2
+    exit 1
+  fi
+
+  cp "$FFPROBE_SRC"  "$DEST/ffprobe-$TRIPLE"
+  cp "$FFMPEG_SRC"   "$DEST/ffmpeg-$TRIPLE"
+  chmod +x "$DEST/ffprobe-$TRIPLE" "$DEST/ffmpeg-$TRIPLE"
+  echo "✓ $DEST/ffprobe-$TRIPLE"
+  echo "✓ $DEST/ffmpeg-$TRIPLE"
+
+else
+  echo "✗ Unsupported OS: $(uname)" >&2
+  exit 1
 fi

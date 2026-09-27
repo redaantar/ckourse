@@ -79,6 +79,9 @@ cd ckourse
 # Install frontend dependencies
 npm install
 
+# Copy the bundled ffmpeg + ffprobe sidecars into src-tauri/binaries/
+bash scripts/download-ffmpeg.sh
+
 # Run in development mode (macOS / Windows / Linux)
 npm run tauri dev
 
@@ -105,9 +108,11 @@ npm run tauri build
 
 Output: `.msi` and `.exe` under `src-tauri\target\release\bundle\`.
 
-**Linux** — build `.deb` / `.AppImage`:
+**Linux** — build `.deb` / `.AppImage` (x86_64). On Debian/Ubuntu, install the Tauri system dependencies first:
 
 ```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 npm run tauri build
 ```
 
