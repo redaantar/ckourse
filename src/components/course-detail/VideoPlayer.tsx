@@ -7,7 +7,7 @@ import {
   forwardRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import {
   PlayIcon as Play,
@@ -62,7 +62,9 @@ const AUTO_SKIP_TICK_MS = 50;
 // Extract the file extension from a path or URL (lowercased, no leading dot).
 function getFileExtension(path: string | undefined): string | undefined {
   if (!path) return undefined;
-  const clean = path.split(/[?#]/)[0];
+  // `#` and `?` are legal local filename characters, not URL delimiters.
+  const isLocalPath = path.startsWith("/") || path.startsWith("\\") || /^[a-z]:[\\/]/i.test(path);
+  const clean = isLocalPath ? path : path.split(/[?#]/)[0];
   const idx = clean.lastIndexOf(".");
   if (idx < 0 || idx === clean.length - 1) return undefined;
   return clean.slice(idx + 1).toLowerCase();
@@ -229,11 +231,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const seekBarRef = useRef<HTMLDivElement>(null);
+  const pendingSeekRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     seekTo(seconds: number) {
       if (videoRef.current) {
-        videoRef.current.currentTime = seconds;
+        if (videoRef.current.readyState < 1) pendingSeekRef.current = seconds;
+        else videoRef.current.currentTime = seconds;
         setVideoTime(seconds);
         onTimeUpdate?.(seconds);
       }
@@ -331,13 +335,36 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   // `stream://`, Drive lessons store `gdrive:<fileId>`, and lessons on a saved
   // server store `srv:<serverId>:<path>`. All three support range requests, so
   // seeking works the same way everywhere.
+  const [prepared, setPrepared] = useState<{ path: string; src: string } | null>(null);
+  const [prepareAttempt, setPrepareAttempt] = useState(0);
+  const needsPreparation = !!lesson && !isRemoteSource && getFileExtension(lesson.videoPath) === "ts";
   const videoSrc = lesson
-    ? lesson.videoPath.startsWith("gdrive:")
-      ? convertFileSrc(lesson.videoPath.slice("gdrive:".length), "gdrive")
-      : lesson.videoPath.startsWith("srv:")
-        ? convertFileSrc(lesson.videoPath.slice("srv:".length), "srv")
-        : convertFileSrc(lesson.videoPath, "stream")
+    ? needsPreparation
+      ? prepared?.path === lesson.videoPath ? prepared.src : undefined
+      : lesson.videoPath.startsWith("gdrive:")
+        ? convertFileSrc(lesson.videoPath.slice("gdrive:".length), "gdrive")
+        : lesson.videoPath.startsWith("srv:")
+          ? convertFileSrc(lesson.videoPath.slice("srv:".length), "srv")
+          : convertFileSrc(lesson.videoPath, "stream")
     : undefined;
+
+  useEffect(() => {
+    if (!needsPreparation || !lesson) return;
+    let cancelled = false;
+    const path = lesson.videoPath;
+    setPrepared(null);
+    setLoadError(null);
+    setIsBuffering(true);
+    invoke<string>("prepare_local_video", { path }).then((playbackPath) => {
+      if (!cancelled) setPrepared({ path, src: convertFileSrc(playbackPath, "stream") });
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setIsBuffering(false);
+        setLoadError(String(error));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [lesson?.id, lesson?.videoPath, needsPreparation, prepareAttempt]);
 
   // Reset state when lesson changes
   useEffect(() => {
@@ -374,6 +401,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   // Reset the flag when lesson changes
   useEffect(() => {
     initialSeekAppliedRef.current = null;
+    pendingSeekRef.current = null;
   }, [lesson?.id]);
 
   // Apply initial position, speed, volume, and autoplay when video is ready
@@ -387,8 +415,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     const applyInitial = () => {
       if (initialSeekAppliedRef.current === lesson.id) return;
       initialSeekAppliedRef.current = lesson.id;
-      if (initialTime && initialTime > 0 && initialTime < video.duration) {
-        video.currentTime = initialTime;
+      const startAt = pendingSeekRef.current ?? initialTime;
+      pendingSeekRef.current = null;
+      if (startAt && startAt > 0 && startAt < video.duration) {
+        video.currentTime = startAt;
       }
       video.playbackRate = playbackSpeedRef.current;
       video.volume = defaultVolume / 100;
@@ -836,6 +866,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const handleRetry = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
+    if (needsPreparation && !videoSrc) {
+      setPrepareAttempt((attempt) => attempt + 1);
+      return;
+    }
     const resumeAt = videoTime;
     starvedRef.current = false;
     setLoadError(null);
@@ -849,7 +883,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       v.removeEventListener("loadedmetadata", onReady);
     };
     v.addEventListener("loadedmetadata", onReady);
-  }, [videoTime, lesson?.id, lesson?.videoPath]);
+  }, [videoTime, lesson?.id, lesson?.videoPath, needsPreparation, videoSrc]);
 
   // Decide which load-error message to show. Drive lessons can fail because the
   // access/refresh token lapsed (test-mode tokens expire ~weekly), which looks
@@ -989,7 +1023,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const VolumeIcon = isMuted || volume === 0 ? SpeakerSlash : volume < 0.5 ? SpeakerLow : SpeakerHigh;
   const progress = videoDuration > 0 ? (videoTime / videoDuration) * 100 : 0;
 
-  if (!videoSrc) {
+  if (!lesson) {
     return (
       <div className="relative overflow-hidden rounded-xl border border-border bg-black">
         <div className="flex aspect-video items-center justify-center bg-card">
@@ -1175,8 +1209,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       )}
 
       {isBuffering && !hasEnded && !loadError && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
           <div className="size-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary" />
+          {needsPreparation && !videoSrc && (
+            <p className="font-sans text-sm text-white/70" role="status">Preparing video for playback…</p>
+          )}
         </div>
       )}
 

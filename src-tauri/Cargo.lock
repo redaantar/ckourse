@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "ckourse"
-version = "1.2.0"
+version = "1.2.1-ts.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
