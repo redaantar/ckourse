@@ -8,24 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { DashboardStats } from "@/types";
 import { EASE_OUT } from "@/lib/constants";
-import level1 from "@/assets/icons/level_1.svg";
-import level2 from "@/assets/icons/level_2.svg";
-import level3 from "@/assets/icons/level_3.svg";
-import level4 from "@/assets/icons/level_4.svg";
-
-const LEVEL_ICONS: Record<number, string> = {
-  1: level1,
-  2: level2,
-  3: level3,
-  4: level4,
-};
-
-const LEVEL_NAMES: Record<number, string> = {
-  1: "Beginner",
-  2: "Explorer",
-  3: "Achiever",
-  4: "Master",
-};
+import { getLevelFraction, getLevelInfo } from "@/lib/levels";
 
 function formatWatchTime(mins: number): string {
   if (mins < 60) return `${mins}m`;
@@ -135,21 +118,9 @@ interface LevelCardProps {
   index: number;
 }
 
-const LEVEL_THRESHOLDS = [0, 5, 20, 50];
-
-function getLevelProgress(level: number, lessonsToNext: number): number {
-  if (level >= 4) return 100;
-  const rangeStart = LEVEL_THRESHOLDS[level - 1];
-  const rangeEnd = LEVEL_THRESHOLDS[level];
-  const total = rangeEnd - rangeStart;
-  const done = total - lessonsToNext;
-  return Math.round((done / total) * 100);
-}
-
 function LevelCard({ level, lessonsToNext, index }: LevelCardProps) {
-  const icon = LEVEL_ICONS[level] ?? LEVEL_ICONS[1];
-  const name = LEVEL_NAMES[level] ?? LEVEL_NAMES[1];
-  const progress = getLevelProgress(level, lessonsToNext);
+  const { icon, name } = getLevelInfo(level);
+  const progress = Math.round(getLevelFraction(level, lessonsToNext) * 100);
 
   return (
     <div

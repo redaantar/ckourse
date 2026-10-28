@@ -1,205 +1,229 @@
+<div align="center">
+
 # Ckourse
 
-> Your local course player — with progress that actually sticks.
+**A desktop course player for the courses you already own.**
 
-Ckourse is an open-source desktop application for watching and organizing downloaded courses. No subscriptions, no cloud, no chaos — just your files, beautifully organized with full progress tracking.
+Import a course from a local folder, Google Drive, or your own server. Ckourse works out the structure, plays it, and keeps track of where you stopped.
+
+[![Latest release](https://img.shields.io/github/v/release/redaantar/ckourse?label=release)](https://github.com/redaantar/ckourse/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB)](https://tauri.app/)
+
+[Download](https://github.com/redaantar/ckourse/releases) · [Features](#features) · [Course sources](#course-sources) · [Build from source](#building-from-source) · [Contributing](#contributing)
+
+</div>
 
 ---
 
-## The Problem
+## Why Ckourse
 
-You download a course from the internet. You get a folder with 80 videos, inconsistently named, nested in subfolders, with PDFs and subtitles scattered around. You watch a few lessons, close your laptop, and come back three days later with no idea where you left off.
+A downloaded course usually arrives as a folder of 80 inconsistently named videos, spread across subfolders, with PDFs and subtitles mixed in. A general-purpose media player doesn't know what "Section 4 – Lesson 12" means, and a file manager doesn't remember which lessons you've finished.
 
-Your media player doesn't know what "Section 4 - Lesson 12" means. Your file manager doesn't track progress. Nothing ties it all together.
-
-**Ckourse does.**
+Ckourse fills that gap. It turns a course folder into a structured, trackable course, whether the files are on your disk, in Google Drive, or on a server you run. There's no subscription and no Ckourse account. Your library lives in a local SQLite database, and credentials stay in your operating system's keychain.
 
 ---
 
 ## Features
 
-### ✅ v1 — Core
-- 📁 **Smart folder import** — point Ckourse at any course folder and it parses the structure automatically, detecting sections, lessons, subtitles, and attachments
-- ☁️ **Google Drive courses** — connect your own Google account and import a course straight from Drive, streaming lessons without downloading the whole folder first
-- ▶️ **Built-in video player** — native HTML5 player with subtitle support, timestamp navigation, and autoplay with a configurable delay between lessons
-- 📊 **Progress tracking** — per-lesson completion, per-course progress bar, resume from exactly where you stopped
-- 📝 **Timestamped notes** — add notes tied to specific timestamps and navigate back to them instantly, even across lessons
-- 📄 **PDF viewer** — read PDF attachments inside the app, for local, server and Drive courses alike; each lesson's own files show up next to it in the Resources tab
-- 🔖 **Bookmarks** — bookmark lessons for quick access from a dedicated page
-- 🗂️ **Course library** — a clean dashboard of all your imported courses with progress at a glance
-- 🎉 **Completion celebration** — canvas particle animation when you finish a course
-- 🌙 **Themes** — light, dark, and system-sync
-- 🔄 **Auto-update** — the app checks for new releases and offers to update in place
+### Library and import
 
-### 🚧 v2 — Planned
-- 📄 **Resource viewer** — preview other attachment types (text, images, Markdown) without leaving the app
-- 🔍 **Search** — search across all courses, lessons, and your personal notes
+- **Smart folder parsing.** Ckourse detects sections, lessons, subtitles, and attachments in the usual course layouts, including nested and flat folders and numbered or unnumbered names.
+- **Review before import.** Rename sections and lessons, drag them into a different order, set the title and author, and pick a category before the course is saved.
+- **Three course sources.** Local folders, Google Drive, and self-hosted servers over SFTP, WebDAV, or S3. See [Course sources](#course-sources).
+- **Course library.** A dashboard that shows every course with its progress, plus favorites and custom categories.
 
----
+### Playback
 
-## Tech Stack
+- **Built-in video player** with subtitles, adjustable playback speed, configurable skip intervals, and resume from your last position.
+- **Autoplay** to the next lesson, with a configurable delay.
+- **Streaming for remote sources.** Drive and server courses play without being downloaded first. A shared block cache with read-ahead keeps playback and seeking smooth, and the player pauses cleanly instead of skipping frames when the buffer runs low.
 
-| Layer | Technology |
-|---|---|
-| Desktop Framework | [Tauri 2](https://tauri.app/) |
-| Frontend | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) |
-| Routing | [React Router 7](https://reactrouter.com/) |
-| Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) + [Radix UI](https://www.radix-ui.com/) |
-| Icons | [Phosphor Icons](https://phosphoricons.com/) |
-| Charts | [Recharts](https://recharts.org/) |
-| PDF rendering | [PDF.js](https://mozilla.github.io/pdf.js/) |
-| Analytics | [PostHog](https://posthog.com/) (optional, env-configured) |
-| Backend | [Rust](https://www.rust-lang.org/) |
-| Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled) |
-| Cloud Storage | [Google Drive API](https://developers.google.com/drive) (optional, bring-your-own credentials) |
-| Credential Storage | OS keychain via [keyring](https://github.com/hwchen/keyring-rs) |
-| Build Tool | [Vite](https://vite.dev/) |
+### Learning tools
+
+- **Progress tracking** for each lesson and each course, with automatic completion.
+- **Timestamped notes.** Each note is tied to a moment in a lesson. Click one to jump back to that moment, even from another lesson.
+- **Bookmarks** for lessons you want to come back to, collected on their own page.
+- **PDF viewer.** Read PDF attachments inside the app, for local, Drive, and server courses. Each lesson's own files appear next to it in the Resources tab.
+- **Progress page** with daily streaks, total watch time, an activity chart, and completion by course and by category.
+- **Levels.** Move from Beginner to Explorer, Achiever, and Master as you complete lessons (25, 150, and 500 lessons).
+- **Completion celebration** when you finish a course.
+
+### App
+
+- Light, dark, and system themes.
+- In-app auto-update from GitHub Releases.
+- Analytics are optional and turned off unless you configure them at build time.
+
+### Roadmap
+
+- Preview for other attachment types (text, images, Markdown)
+- Search across courses, lessons, and notes
 
 ---
 
 ## Download
 
-Pre-built installers for macOS and Windows are available on the [Releases page](https://github.com/redaantar/ckourse/releases).
+Installers for macOS (universal) and Windows are published on the [Releases page](https://github.com/redaantar/ckourse/releases). For Linux, build from source. Instructions are [below](#building-from-source).
 
 ---
 
-## Building from Source
+## Course sources
+
+| Source | Connection | Browsing | Credentials |
+|---|---|---|---|
+| **Local folder** | Filesystem | Native folder picker or drag and drop | None |
+| **Google Drive** | Google Drive API, using your own Google Cloud project | Google Picker | OS keychain |
+| **SFTP** | SSH, with a password or private key | In-app folder browser | OS keychain |
+| **WebDAV** | HTTP(S), with ranged GET requests | In-app folder browser | OS keychain |
+| **S3-compatible** | Presigned URLs (AWS S3, MinIO, Cloudflare R2, Backblaze B2, and others) | In-app folder browser | OS keychain |
+
+Remote courses are streamed on demand. Ckourse doesn't copy or sync your files, and it never sends them to any server other than the one you configured.
+
+### Self-hosted servers
+
+Add a server under **Settings → Servers**. You can save several named servers and use different protocols for each.
+
+1. Choose the protocol and enter the host, port, and base path, or the endpoint and bucket for S3.
+2. Enter the credentials. Secrets are stored in the OS keychain, and only non-secret settings are written to the local database.
+3. Click **Test connection**, then choose **Import from a server** on the Import page and browse to the course folder.
+
+For SFTP, Ckourse pins the server's SSH host key the first time it connects (trust on first use). If the key changes later, it refuses to connect and tells you why.
+
+Remote listings don't include video durations. Each lesson's duration is filled in the first time you play it.
+
+### Google Drive
+
+Drive uses your own credentials. You create a personal Google Cloud project and paste its credentials into Ckourse. Nothing is shipped with the app, and nothing goes through a Ckourse server: the app talks to Google directly.
+
+This is deliberate. Reading a course folder requires the restricted `drive.readonly` scope, and a shared, published app with that scope would need an annual third-party security assessment. A personal project that stays in testing mode avoids that requirement and keeps your files under your own account.
+
+The app includes an interactive walkthrough at **Settings → Google Drive → Setup guide** that links to each console page. The steps are:
+
+1. [Create a Google Cloud project](https://console.cloud.google.com/projectcreate).
+2. Enable the [Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) and the [Picker API](https://console.cloud.google.com/apis/library/picker.googleapis.com).
+3. Configure the OAuth consent screen and add your Google account as a test user.
+4. Create an **OAuth client ID** with the application type set to **Desktop app**.
+5. Create an **API key**. The folder picker uses it.
+6. Paste the client ID, client secret, and API key into Ckourse's settings, then click **Connect**.
+
+Sign-in finishes through a one-time listener on `http://127.0.0.1` with a random port, so you don't need to register a redirect URI in advance.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Desktop framework | [Tauri 2](https://tauri.app/) |
+| Frontend | [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [React Router 7](https://reactrouter.com/) |
+| UI | [Tailwind CSS v4](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/), [Radix UI](https://www.radix-ui.com/), [Phosphor Icons](https://phosphoricons.com/), [Recharts](https://recharts.org/), [dnd kit](https://dndkit.com/) |
+| Backend | [Rust](https://www.rust-lang.org/) |
+| PDF rendering | [PDF.js](https://mozilla.github.io/pdf.js/) |
+| Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled) |
+| Networking | [reqwest](https://github.com/seanmonstar/reqwest) (rustls), [russh](https://github.com/Eugeny/russh) and russh-sftp, [rusty-s3](https://github.com/paolobarbolini/rusty-s3) |
+| Credentials | OS keychain via [keyring](https://github.com/hwchen/keyring-rs) |
+| Analytics | [PostHog](https://posthog.com/) (optional) |
+| Build | [Vite](https://vite.dev/) |
+
+---
+
+## Building from source
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs/) (latest stable)
-- [Node.js](https://nodejs.org/) (v20+)
-- Platform toolchain for Tauri — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+- [Rust](https://rustup.rs/), latest stable
+- [Node.js](https://nodejs.org/) v20 or later
+- The Tauri platform toolchain. See [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
 ### Development
 
 ```bash
-# Clone the repository
 git clone https://github.com/redaantar/ckourse.git
 cd ckourse
-
-# Install frontend dependencies
 npm install
 
-# Run in development mode (macOS / Windows / Linux)
-npm run tauri dev
-
-# Build for production (produces installers for the current OS)
-npm run tauri build
+npm run tauri dev      # run in development mode
+npm run tauri build    # build installers for the current OS
 ```
 
-#### Platform-specific build targets
+### Platform builds
 
-**macOS** — build a universal binary (Apple Silicon + Intel):
+| Platform | Command | Output |
+|---|---|---|
+| macOS (universal) | `npm run tauri build -- --target universal-apple-darwin` | `.dmg` and `.app` in `src-tauri/target/universal-apple-darwin/release/bundle/` |
+| Windows | `npm run tauri build` | `.msi` and `.exe` in `src-tauri\target\release\bundle\` |
+| Linux | `npm run tauri build` | `.deb` and `.AppImage` in `src-tauri/target/release/bundle/` |
+
+The universal macOS build needs the Intel target installed once: `rustup target add x86_64-apple-darwin`.
+
+### Tests
 
 ```bash
-rustup target add x86_64-apple-darwin  # one-time setup
-npm run tauri build -- --target universal-apple-darwin
+cd src-tauri && cargo test
 ```
-
-Output: `.dmg` and `.app` under `src-tauri/target/universal-apple-darwin/release/bundle/`.
-
-**Windows** — build an MSI and NSIS installer:
-
-```powershell
-npm run tauri build
-```
-
-Output: `.msi` and `.exe` under `src-tauri\target\release\bundle\`.
-
-**Linux** — build `.deb` / `.AppImage`:
-
-```bash
-npm run tauri build
-```
-
-Output: `.deb` and `.AppImage` under `src-tauri/target/release/bundle/`.
 
 ### Environment variables (optional)
 
-PostHog analytics is disabled unless you set the following in a `.env` file at the project root. Leave them unset to run the app with analytics off.
+PostHog analytics stays off unless both variables are set in a `.env` file at the project root.
 
 ```bash
 VITE_PUBLIC_POSTHOG_PROJECT_TOKEN=your_token
 VITE_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 ```
 
-### CI
+### CI and releases
 
-CI builds macOS (universal) and Windows installers on tag push — see [`.github/workflows/build.yml`](.github/workflows/build.yml).
-
----
-
-## Google Drive Setup
-
-Drive support is **bring-your-own-credentials**: you create a personal Google Cloud project and paste its credentials into Ckourse's Settings. Nothing is shipped with the app and nothing is sent to a Ckourse server — credentials are stored in your OS keychain, and the app talks to Google directly.
-
-This is deliberate. Reading a course folder requires the Restricted `drive.readonly` scope, which would demand an annual third-party security assessment for a shared, published app. Using your own project — which stays in "testing" mode — sidesteps that entirely and keeps your files under your own account.
-
-The app ships an interactive walkthrough (**Settings → Google Drive → Setup guide**) that links each console page directly. The short version:
-
-1. [Create a Google Cloud project](https://console.cloud.google.com/projectcreate).
-2. Enable the [Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) and the [Picker API](https://console.cloud.google.com/apis/library/picker.googleapis.com).
-3. Configure the OAuth consent screen and add your own Google account as a test user.
-4. Create an **OAuth client ID** (application type: *Web application*).
-5. Create an **API key** — this powers the folder picker.
-6. Paste the client ID, client secret, and API key into Ckourse's Settings, then click Connect.
-
-OAuth completes through a one-shot `http://127.0.0.1` listener on a random port, so no redirect URI needs to be registered ahead of time.
+When a version tag is pushed, CI builds the macOS (universal) and Windows installers. See [`.github/workflows/build.yml`](.github/workflows/build.yml). The release process is described in [RELEASING.md](RELEASING.md).
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 ckourse/
-├── src/                      # React frontend
+├── src/                          # React frontend
 │   ├── components/
-│   │   ├── app-shell/        # Layout, sidebar, navigation
-│   │   ├── course-detail/    # Video player, notes, sections
-│   │   ├── dashboard/        # Course cards, stats, empty state
-│   │   ├── ui/               # Shared UI primitives
-│   │   ├── DriveSetupGuide.tsx  # Interactive Google Cloud walkthrough
-│   │   ├── ErrorBoundary.tsx
-│   │   └── UpdateBanner.tsx
-│   ├── pages/                # Route pages (Dashboard, CourseDetail, Notes,
-│   │                         #   Bookmarks, Progress, ImportCourse, Settings)
-│   ├── hooks/                # Custom React hooks
-│   ├── lib/                  # Store, utilities, constants
-│   ├── assets/               # Lottie animations, icons
-│   └── types/                # TypeScript type definitions
-├── src-tauri/                # Rust backend
-│   ├── src/
-│   │   ├── main.rs           # Tauri entry point
-│   │   ├── lib.rs            # Tauri app setup
-│   │   ├── db.rs             # SQLite schema and queries
-│   │   ├── parser.rs         # Course folder parser (local + Drive)
-│   │   ├── subtitle.rs       # Subtitle file handling
-│   │   ├── google.rs         # Google OAuth, Drive API, token refresh
-│   │   ├── drive_protocol.rs # drive:// handler — streams Drive media
-│   │   ├── video_protocol.rs # video:// handler — streams local media
-│   │   └── commands/         # courses.rs, lessons.rs, notes.rs,
-│   │                         #   settings.rs, drive.rs
-│   └── tauri.conf.json       # Tauri configuration
-└── public/                   # Static assets
+│   │   ├── app-shell/            # Layout, sidebar, navigation
+│   │   ├── course-detail/        # Video player, notes, sections
+│   │   ├── dashboard/            # Course cards, stats, levels
+│   │   ├── settings/             # Settings sections (servers, shared primitives)
+│   │   ├── ui/                   # Shared UI primitives
+│   │   ├── DriveSetupGuide.tsx   # Interactive Google Cloud walkthrough
+│   │   └── ServerBrowser.tsx     # Remote folder browser
+│   ├── pages/                    # Dashboard, CourseDetail, Notes, Bookmarks,
+│   │                             #   Progress, ImportCourse, Settings
+│   ├── hooks/                    # Custom React hooks
+│   ├── lib/                      # Store, levels, servers, utilities
+│   └── types/                    # TypeScript types
+├── src-tauri/                    # Rust backend
+│   └── src/
+│       ├── lib.rs                # App setup and protocol registration
+│       ├── db.rs                 # SQLite schema and queries
+│       ├── parser.rs             # Course structure parser (local and remote)
+│       ├── subtitle.rs           # Subtitle handling
+│       ├── google.rs             # Google OAuth and Drive API
+│       ├── remote/               # RemoteBackend trait: sftp.rs, webdav.rs, s3.rs
+│       ├── stream_cache.rs       # Shared block cache and read-ahead for remote streams
+│       ├── video_protocol.rs     # video://  (local media)
+│       ├── drive_protocol.rs     # gdrive:// (Google Drive media)
+│       ├── remote_protocol.rs    # srv://    (self-hosted server media)
+│       └── commands/             # Tauri commands: courses, lessons, notes,
+│                                 #   settings, drive, servers
+└── public/                       # Static assets
 ```
 
 ---
 
 ## Contributing
 
-Ckourse is in early development. Contributions, issues, and feature requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code conventions, and commit style, and the [Code of Conduct](CODE_OF_CONDUCT.md) for community expectations.
+Issues, feature requests, and pull requests are welcome. Before you start, read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code conventions, and commit style, and the [Code of Conduct](CODE_OF_CONDUCT.md). Contributors are asked to sign the [CLA](CLA.md) on their first pull request.
 
-To report a security vulnerability, see [SECURITY.md](SECURITY.md).
+To report a security vulnerability, follow [SECURITY.md](SECURITY.md) and don't open a public issue.
 
 ---
 
 ## License
 
-MIT — free to use, modify, and distribute.
-
----
-
-## Links
-
-- 🐛 Issues: [github.com/redaantar/ckourse/issues](https://github.com/redaantar/ckourse/issues)
+[MIT](LICENSE) © Reda Antar
