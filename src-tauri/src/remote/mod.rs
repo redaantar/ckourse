@@ -134,7 +134,7 @@ pub trait RemoteBackend: Send + Sync {
 
     async fn size_of(&self, path: &str) -> Result<u64, String>;
 
-    /// Read a small file whole — subtitles and text resources only.
+    /// Read a file whole — subtitles and resources (e.g. PDFs opened in-app).
     async fn read_all(&self, path: &str) -> Result<Vec<u8>, String>;
 }
 

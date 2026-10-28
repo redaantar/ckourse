@@ -45,6 +45,7 @@ Ckourse fills that gap. It turns a course folder into a structured, trackable co
 - **Progress tracking** for each lesson and each course, with automatic completion.
 - **Timestamped notes.** Each note is tied to a moment in a lesson. Click one to jump back to that moment, even from another lesson.
 - **Bookmarks** for lessons you want to come back to, collected on their own page.
+- **PDF viewer.** Read PDF attachments inside the app, for local, Drive, and server courses. Each lesson's own files appear next to it in the Resources tab.
 - **Progress page** with daily streaks, total watch time, an activity chart, and completion by course and by category.
 - **Levels.** Move from Beginner to Explorer, Achiever, and Master as you complete lessons (25, 150, and 500 lessons).
 - **Completion celebration** when you finish a course.
@@ -57,7 +58,7 @@ Ckourse fills that gap. It turns a course folder into a structured, trackable co
 
 ### Roadmap
 
-- PDF and resource viewer for course attachments
+- Preview for other attachment types (text, images, Markdown)
 - Search across courses, lessons, and notes
 
 ---
@@ -119,6 +120,7 @@ Sign-in finishes through a one-time listener on `http://127.0.0.1` with a random
 | Frontend | [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [React Router 7](https://reactrouter.com/) |
 | UI | [Tailwind CSS v4](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/), [Radix UI](https://www.radix-ui.com/), [Phosphor Icons](https://phosphoricons.com/), [Recharts](https://recharts.org/), [dnd kit](https://dndkit.com/) |
 | Backend | [Rust](https://www.rust-lang.org/) |
+| PDF rendering | [PDF.js](https://mozilla.github.io/pdf.js/) |
 | Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled) |
 | Networking | [reqwest](https://github.com/seanmonstar/reqwest) (rustls), [russh](https://github.com/Eugeny/russh) and russh-sftp, [rusty-s3](https://github.com/paolobarbolini/rusty-s3) |
 | Credentials | OS keychain via [keyring](https://github.com/hwchen/keyring-rs) |

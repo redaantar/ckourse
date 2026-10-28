@@ -52,7 +52,7 @@ pub fn get_lesson_subtitles(
 #[tauri::command]
 pub async fn get_subtitle_vtt(path: String) -> Result<String, String> {
     if let Some(file_id) = path.strip_prefix("gdrive:") {
-        let bytes = crate::google::fetch_file_bytes(file_id.to_string()).await?;
+        let bytes = crate::google::fetch_file_bytes(file_id.to_string(), u64::MAX).await?;
         subtitle::convert_bytes_to_vtt(&bytes)
     } else if path.starts_with(crate::remote::URI_PREFIX) {
         let bytes = crate::remote::read_uri(&path).await?;

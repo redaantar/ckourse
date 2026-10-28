@@ -142,6 +142,16 @@ export async function getSubtitleVtt(path: string): Promise<string> {
   return invoke<string>("get_subtitle_vtt", { path });
 }
 
+/** Raw bytes of an imported resource, from whichever source the course lives on. */
+export async function readResource(resourceId: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_resource", { resourceId });
+}
+
+/** Open a local resource in the system's default app. */
+export async function openResource(resourceId: number): Promise<void> {
+  return invoke<void>("open_resource", { resourceId });
+}
+
 export async function getAllSettings(): Promise<Record<string, string>> {
   const pairs = await invoke<[string, string][]>("get_all_settings");
   return Object.fromEntries(pairs);

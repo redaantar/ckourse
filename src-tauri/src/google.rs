@@ -310,8 +310,9 @@ pub async fn parse_drive_folder(
     crate::parser::parse_source_tree(&folder_name, children, &format!("gdrive:{folder_id}"))
 }
 
-/// Download a (small) Drive file's bytes via alt=media — used for subtitles.
-pub async fn fetch_file_bytes(file_id: String) -> Result<Vec<u8>, String> {
+/// Download a Drive file's bytes via alt=media — subtitles and resources.
+/// Refuses before downloading when the reported size exceeds `max_bytes`.
+pub async fn fetch_file_bytes(file_id: String, max_bytes: u64) -> Result<Vec<u8>, String> {
     let token = valid_access_token().await?;
     let url = format!(
         "https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
@@ -324,6 +325,12 @@ pub async fn fetch_file_bytes(file_id: String) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("Drive fetch {}", resp.status()));
+    }
+    if resp.content_length().is_some_and(|len| len > max_bytes) {
+        return Err(format!(
+            "File is too large to open in the app ({} MB)",
+            resp.content_length().unwrap_or(0) / (1024 * 1024)
+        ));
     }
     Ok(resp.bytes().await.map_err(|e| e.to_string())?.to_vec())
 }

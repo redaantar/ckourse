@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import LottieLib from "lottie-react";
+import { useLottie } from "lottie-react";
 import {
   FolderIcon as Folder,
   FileVideoIcon as FileVideo,
@@ -14,13 +14,6 @@ import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import { browseServer, type RemoteNode, type ServerConfig } from "@/lib/servers";
 import loadingAnimation from "@/assets/lotties/loading.json";
-
-// Same CJS/ESM interop dance the import page does.
-const Lottie: React.ComponentType<{
-  animationData: unknown;
-  loop?: boolean;
-  className?: string;
-}> = (LottieLib as unknown as { default?: never }).default ?? LottieLib;
 
 const VIDEO_EXTENSIONS = /\.(mp4|m4v|mkv|mov|webm|avi|ogv|ogg)$/i;
 
@@ -46,6 +39,12 @@ export function ServerBrowser({ servers, onPick, onClose, className }: ServerBro
   const [entries, setEntries] = useState<RemoteNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { View: loadingAnimationView } = useLottie({
+    animationData: loadingAnimation,
+    loop: true,
+    className: "size-28",
+  });
 
   const load = useCallback(
     async (target: ServerConfig, next?: string) => {
@@ -147,7 +146,7 @@ export function ServerBrowser({ servers, onPick, onClose, className }: ServerBro
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {loading ? (
                   <div className="flex flex-col items-center py-10">
-                    <Lottie animationData={loadingAnimation} loop className="size-28" />
+                    {loadingAnimationView}
                   </div>
                 ) : error ? (
                   <div className="flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-3">

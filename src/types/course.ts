@@ -43,6 +43,8 @@ export interface Lesson {
 
 export interface Resource {
   id: number;
+  /** `null` for course-level resources, the owning lesson otherwise. */
+  lessonId: number | null;
   title: string;
   type: string;
   path: string;
