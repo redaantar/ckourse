@@ -584,6 +584,7 @@ fn build_lessons_from_files(
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
 
+    let video_numbers = leading_number_counts(sorted_videos.iter().map(|v| v.name.as_str()));
     let mut lessons = Vec::new();
 
     for (i, video) in sorted_videos.iter().enumerate() {
@@ -615,17 +616,10 @@ fn build_lessons_from_files(
             }
         }
 
-        // Match resources by base name
+        // Match resources by base name or shared lesson number
         let mut lesson_resources: Vec<ParsedResource> = Vec::new();
         for file in other_files {
-            let file_base = file
-                .name
-                .rsplit_once('.')
-                .map(|(n, _)| n.to_string())
-                .unwrap_or(file.name.clone())
-                .to_lowercase();
-
-            if file_base == video_base.to_lowercase() {
+            if resource_belongs_to(&file.name, &video.name, &video_numbers) {
                 let rt = classify_resource(&file.extension, &file.name);
                 lesson_resources.push(ParsedResource {
                     title: clean_display_name(&file.name),
@@ -646,6 +640,17 @@ fn build_lessons_from_files(
             subtitles: matched_subs,
             resources: lesson_resources,
         });
+    }
+
+    let video_names: Vec<&str> = sorted_videos.iter().map(|v| v.name.as_str()).collect();
+    for file in other_files {
+        if let Some(i) = orphan_pdf_lesson(&file.name, &video_names, &video_numbers) {
+            lessons[i].resources.push(ParsedResource {
+                title: clean_display_name(&file.name),
+                path: file.path.to_string_lossy().to_string(),
+                resource_type: ResourceType::Pdf,
+            });
+        }
     }
 
     // Strip common prefix/suffix across all lesson titles in this batch
@@ -892,6 +897,64 @@ fn video_base_name(filename: &str) -> String {
         .map(|(n, _)| n)
         .unwrap_or(filename);
     stem.to_string()
+}
+
+/// How many videos in a folder start with each lesson number.
+fn leading_number_counts<'a>(names: impl Iterator<Item = &'a str>) -> HashMap<u32, usize> {
+    let mut counts = HashMap::new();
+    for name in names {
+        if let Some(n) = extract_leading_number(name) {
+            *counts.entry(n).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// Whether an attachment belongs to a lesson video: the same base name
+/// ("intro.mp4" / "intro.pdf"), or the same leading lesson number, as in Udemy
+/// downloads ("004 Worksheet intro.mp4" / "004 App-worksheet.pdf"). Number
+/// matching only applies when no other video in the folder shares the number.
+fn resource_belongs_to(
+    file_name: &str,
+    video_name: &str,
+    video_numbers: &HashMap<u32, usize>,
+) -> bool {
+    let file_base = file_name
+        .rsplit_once('.')
+        .map_or(file_name, |(n, _)| n)
+        .to_lowercase();
+    if file_base == video_base_name(video_name).to_lowercase() {
+        return true;
+    }
+    match (extract_leading_number(file_name), extract_leading_number(video_name)) {
+        (Some(f), Some(v)) => f == v && video_numbers.get(&v) == Some(&1),
+        _ => false,
+    }
+}
+
+/// Lesson for a PDF that matched no video. Udemy "article" lectures ship a PDF
+/// with no video of their own ("2. Syllabus.pdf" beside "1. Intro.mp4"), so it
+/// goes to the closest preceding lesson, or the first one. `video_names` must be
+/// in lesson order.
+fn orphan_pdf_lesson(
+    file_name: &str,
+    video_names: &[&str],
+    video_numbers: &HashMap<u32, usize>,
+) -> Option<usize> {
+    if !file_name.to_lowercase().ends_with(".pdf") || video_names.is_empty() {
+        return None;
+    }
+    let number = extract_leading_number(file_name)?;
+    if video_names
+        .iter()
+        .any(|v| resource_belongs_to(file_name, v, video_numbers))
+    {
+        return None;
+    }
+    let preceding = video_names
+        .iter()
+        .rposition(|v| extract_leading_number(v).is_some_and(|n| n < number));
+    Some(preceding.unwrap_or(0))
 }
 
 fn subtitle_base_name(filename: &str) -> String {
@@ -1681,6 +1744,7 @@ fn build_lessons_from_source(
     sorted_subtitles.sort_by(|a, b| source_name_cmp(a, b, has_numbers));
 
     let mut used_positional = false;
+    let video_numbers = leading_number_counts(sorted_videos.iter().map(|v| v.name.as_str()));
     let mut lessons = Vec::new();
 
     for (i, video) in sorted_videos.iter().enumerate() {
@@ -1711,13 +1775,7 @@ fn build_lessons_from_source(
 
         let mut lesson_resources: Vec<ParsedResource> = Vec::new();
         for file in other_files {
-            let file_base = file
-                .name
-                .rsplit_once('.')
-                .map(|(n, _)| n.to_string())
-                .unwrap_or_else(|| file.name.clone())
-                .to_lowercase();
-            if file_base == video_base.to_lowercase() {
+            if resource_belongs_to(&file.name, &video.name, &video_numbers) {
                 lesson_resources.push(ParsedResource {
                     title: clean_display_name(&file.name),
                     path: file.uri.clone(),
@@ -1734,6 +1792,17 @@ fn build_lessons_from_source(
             subtitles: matched_subs,
             resources: lesson_resources,
         });
+    }
+
+    let video_names: Vec<&str> = sorted_videos.iter().map(|v| v.name.as_str()).collect();
+    for file in other_files {
+        if let Some(i) = orphan_pdf_lesson(&file.name, &video_names, &video_numbers) {
+            lessons[i].resources.push(ParsedResource {
+                title: clean_display_name(&file.name),
+                path: file.uri.clone(),
+                resource_type: ResourceType::Pdf,
+            });
+        }
     }
 
     let mut titles: Vec<String> = lessons.iter().map(|l| l.title.clone()).collect();
@@ -1921,6 +1990,38 @@ pub fn parse_source_tree(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resources_match_lessons_by_base_name_or_unique_number() {
+        let videos = ["003 Featured by app store.mp4", "004 WORKSHEET Fill this out.mp4", "5 a.mp4", "5 b.mp4"];
+        let counts = super::leading_number_counts(videos.iter().copied());
+        let belongs = |file: &str, video: &str| super::resource_belongs_to(file, video, &counts);
+
+        assert!(belongs("004 App-worksheet.pdf", videos[1]));
+        assert!(belongs("003 Link-to-the-form.url", videos[0]));
+        assert!(!belongs("004 App-worksheet.pdf", videos[0]));
+        assert!(belongs("003 Featured by app store.pdf", videos[0]));
+        // Ambiguous number: only an exact base-name match counts.
+        assert!(!belongs("5 notes.pdf", videos[2]));
+        assert!(belongs("5 a.pdf", videos[2]));
+        assert!(!belongs("external-links.txt", videos[0]));
+    }
+
+    #[test]
+    fn unmatched_pdfs_go_to_the_closest_preceding_lesson() {
+        let videos = ["1. Intro.mp4", "4. How an app works.mp4", "10. Help.mp4"];
+        let counts = super::leading_number_counts(videos.iter().copied());
+        let lesson = |file: &str| super::orphan_pdf_lesson(file, &videos, &counts);
+
+        assert_eq!(lesson("2. iOS Syllabus.pdf"), Some(0));
+        assert_eq!(lesson("8. 12-Rules-eBook.pdf"), Some(1));
+        assert_eq!(lesson("68. Playsheet.pdf"), Some(2));
+        assert_eq!(lesson("0. Before you start.pdf"), Some(0));
+        // Matched PDFs, unnumbered PDFs and other types are left alone.
+        assert_eq!(lesson("4. Slides.pdf"), None);
+        assert_eq!(lesson("Handbook.pdf"), None);
+        assert_eq!(lesson("2. Screenshot.png"), None);
+    }
+
     use super::*;
 
     // --- remote sources (SFTP / WebDAV / S3) ---
