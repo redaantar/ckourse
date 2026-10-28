@@ -1130,6 +1130,15 @@ function SortableLesson({
             SUB
           </span>
         )}
+        {lesson.resources.length > 0 && (
+          <span
+            title={lesson.resources.map((r) => r.title).join("\n")}
+            className="shrink-0 rounded bg-secondary px-1.5 py-0.5 font-mono text-[9px] font-medium text-muted-foreground group-hover:bg-muted"
+          >
+            {lesson.resources.some((r) => r.type === "pdf") ? "PDF" : "FILE"}
+            {lesson.resources.length > 1 && ` ${lesson.resources.length}`}
+          </span>
+        )}
       </div>
     </div>
   );

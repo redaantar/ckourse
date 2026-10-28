@@ -320,6 +320,12 @@ pub fn init_db(app_data_dir: &Path) -> SqlResult<Connection> {
         );",
     );
 
+    // `resources` has no foreign key, so older versions left a deleted
+    // course's resources behind. Clear any that remain.
+    let _ = conn.execute_batch(
+        "DELETE FROM resources WHERE course_id IS NULL OR course_id NOT IN (SELECT id FROM courses);",
+    );
+
     Ok(conn)
 }
 
@@ -690,6 +696,8 @@ pub fn reset_course_progress(conn: &Connection, course_id: i64) -> SqlResult<()>
 }
 
 pub fn delete_course(conn: &Connection, course_id: i64) -> SqlResult<()> {
+    // `resources` has no foreign key to cascade from, so clear it explicitly.
+    conn.execute("DELETE FROM resources WHERE course_id = ?1", params![course_id])?;
     conn.execute("DELETE FROM courses WHERE id = ?1", params![course_id])?;
     Ok(())
 }
@@ -1675,6 +1683,12 @@ mod tests {
             Some("/c/01.pdf")
         );
         assert_eq!(get_resource_path(&conn, 9_999).unwrap(), None);
+
+        delete_course(&conn, course_id).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(left, 0, "deleting a course removes its resources");
 
         drop(conn);
         let _ = std::fs::remove_dir_all(dir);
