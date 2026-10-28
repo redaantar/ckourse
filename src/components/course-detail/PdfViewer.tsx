@@ -350,10 +350,19 @@ function PdfPage({ doc, pageNumber, scale, estimatedSize, root, register }: PdfP
   }, [root]);
 
   // Render (or re-render on zoom) while the page is near the viewport. Pages that
-  // scroll far away keep their last bitmap; that's cheap enough for course PDFs
-  // and avoids flashing blank pages when scrolling back.
+  // scroll out of the prerender margin drop their bitmap — at Retina fit-width a
+  // page is ~12 MB, so keeping every rendered page would grow without bound on
+  // long PDFs. Dropping them also avoids showing a stale bitmap after a zoom.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+      setRendered(false);
+      return;
+    }
     let cancelled = false;
     let task: { cancel: () => void; promise: Promise<void> } | null = null;
 

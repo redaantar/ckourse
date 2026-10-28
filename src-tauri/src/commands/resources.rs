@@ -1,4 +1,5 @@
 use tauri::ipc::Response;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::db::{self, DbState};
 
@@ -19,14 +20,10 @@ pub async fn read_resource(
     state: tauri::State<'_, DbState>,
     resource_id: i64,
 ) -> Result<Response, String> {
-    let path = {
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        db::get_resource_path(&conn, resource_id).map_err(|e| e.to_string())?
-    }
-    .ok_or_else(|| format!("Resource {resource_id} not found"))?;
+    let path = resource_path(&state, resource_id)?;
 
     let bytes = if let Some(file_id) = path.strip_prefix("gdrive:") {
-        crate::google::fetch_file_bytes(file_id.to_string()).await?
+        crate::google::fetch_file_bytes(file_id.to_string(), MAX_RESOURCE_BYTES).await?
     } else if let Some((server_id, remote_path)) = crate::remote::split_uri(&path) {
         let size_path = remote_path.clone();
         let size = crate::remote::with_backend(&server_id, move |b| {
@@ -44,6 +41,35 @@ pub async fn read_resource(
 
     ensure_size(bytes.len() as u64)?;
     Ok(Response::new(bytes))
+}
+
+/// Open a local resource in the system's default app.
+///
+/// Like `read_resource`, this takes an id so the webview never needs a broad
+/// filesystem scope on the opener plugin — only imported files can be opened.
+#[tauri::command]
+pub fn open_resource(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+    resource_id: i64,
+) -> Result<(), String> {
+    let path = resource_path(&state, resource_id)?;
+    if path.starts_with("gdrive:") || crate::remote::split_uri(&path).is_some() {
+        return Err("Remote resources can't be opened in another app".to_string());
+    }
+    if !std::path::Path::new(&path).is_file() {
+        return Err("The file may have been moved or deleted".to_string());
+    }
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| format!("No app could open this file: {e}"))
+}
+
+fn resource_path(state: &DbState, resource_id: i64) -> Result<String, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_resource_path(&conn, resource_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Resource {resource_id} not found"))
 }
 
 fn read_local(path: &str) -> Result<Vec<u8>, String> {

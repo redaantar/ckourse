@@ -75,6 +75,7 @@ pub fn run() {
             commands::get_lesson_subtitles,
             commands::get_subtitle_vtt,
             commands::read_resource,
+            commands::open_resource,
             commands::toggle_bookmark,
             commands::toggle_favorite,
             commands::get_bookmarked_courses,

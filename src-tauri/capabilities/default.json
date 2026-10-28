@@ -7,10 +7,6 @@
     "core:default",
     "core:window:allow-start-dragging",
     "opener:default",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "/**" }, { "path": "**" }]
-    },
     "dialog:default",
     "updater:default",
     "process:default",

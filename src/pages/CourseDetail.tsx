@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useContext } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ActivePathContext } from "@/hooks/usePageVisible";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import {
   CheckCircleIcon as CheckCircle,
@@ -54,6 +53,7 @@ import {
   addNote as storeAddNote,
   updateNote as storeUpdateNote,
   deleteNote as storeDeleteNote,
+  openResource,
 } from "@/lib/store";
 
 interface CourseDetailProps {
@@ -608,25 +608,21 @@ function CourseDetailInner({
       });
       return;
     }
-    void openExternally(resource.path);
+    void openExternally(resource);
   };
 
-  const openExternally = async (path: string) => {
+  const openExternally = async (resource: Resource) => {
     try {
-      await openPath(path);
+      await openResource(resource.id);
     } catch (err) {
-      console.debug("openPath failed", err);
-      const message = err instanceof Error ? err.message : String(err);
-      const forbidden = message.startsWith("Not allowed to open path");
+      // Expected when the file was moved/deleted outside the app — debug-level.
+      console.debug("openResource failed", err);
       reportError(err, "CourseDetail.handleOpenResource", {
-        path,
-        severity: forbidden ? "error" : "expected",
+        path: resource.path,
+        severity: "expected",
       });
-      const fileName = path.split(/[\\/]/).pop() || path;
       toast.error("Couldn't open resource", {
-        description: forbidden
-          ? `Ckourse isn't allowed to open "${fileName}". Please report this issue.`
-          : `No app could open "${fileName}". Make sure the file still exists and its drive is connected.`,
+        description: `No app could open "${resource.title}". Make sure the file still exists and its drive is connected.`,
       });
     }
   };
@@ -937,7 +933,7 @@ function CourseDetailInner({
           resource={openPdf}
           onClose={() => setOpenPdf(null)}
           onOpenExternally={
-            isRemotePath(openPdf.path) ? undefined : () => void openExternally(openPdf.path)
+            isRemotePath(openPdf.path) ? undefined : () => void openExternally(openPdf)
           }
         />
       )}
