@@ -5,7 +5,12 @@ import { PostHogProvider } from "@posthog/react";
 import App from "./App";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "./index.css";
+import { initTheme } from "@/lib/theme";
+
+initTheme();
 
 
 const posthogOptions = {

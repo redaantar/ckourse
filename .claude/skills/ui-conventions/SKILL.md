@@ -36,8 +36,9 @@ src/
     Sidebar.tsx            # App sidebar with navigation
     CourseCard.tsx          # Feature components
     ProgressBar.tsx         # Reusable custom components
-    SquircleSearch.tsx      # Reusable squircle search input
-    SquircleButton.tsx      # Reusable squircle button (primary/secondary/ghost)
+    ui/button.tsx           # Button (default/outline/secondary/ghost/destructive/destructive-outline/link)
+    ui/input.tsx            # Text input
+    ui/search-input.tsx     # Search field with icon, clear button, Esc-to-clear
   pages/
     Dashboard.tsx          # Library / Home page
   data/
@@ -60,23 +61,45 @@ src/
 
 ## Theme & Colors
 
-All design tokens live in `src/index.css`. Never hardcode color values in components.
+All design tokens live in `src/index.css`. Never hardcode color values in components. The reasoning behind every token is in `BRAND.md` at the repo root; read it before changing color, type or motion.
+
+**Lime means "you did this"**: reserve `primary` for the learner's own progress (fills, completed checks, current lesson, selection). Lime as text/icon color is `text-primary`, which resolves to `--primary-ink` (deepened in light mode).
+
+**Course colors:** always render a course's color through `courseColor(course.accentColor)` from `@/lib/color`, never the raw value. Pickers use `COURSE_COLORS` (named OKLCH palette; `aria-label` is the name).
 
 ### Color Tokens
 
-| Token | Value | Usage |
-|---|---|---|
-| `--background` | `#0A0A0A` | Page background |
-| `--foreground` | `#EDEDED` | Primary text |
-| `--card` | `#111214` | Card surfaces |
-| `--primary` | `#C8F135` | Electric Lime accent, CTAs |
-| `--secondary` | `#1A1C1F` | Hover states, secondary surfaces |
-| `--muted` | `#111214` | Subdued backgrounds |
-| `--muted-foreground` | `#7A7D85` | Secondary text, labels |
-| `--border` | `#252729` | Borders, dividers |
-| `--destructive` | `#FF6B6B` | Errors, danger actions |
-| `--info` | `#5B9CF6` | Informational states |
-| `--success` | `#C8F135` | Success states (same as primary) |
+| Token | Dark | Light | Usage |
+|---|---|---|---|
+| `--sidebar` | `#0C0C0E` | `#EEEEF1` | Window canvas / sidebar |
+| `--background` | `#121214` | `#F7F7F8` | Content panel |
+| `--foreground` | `#F5F5F7` | `#1D1D1F` | Primary text; also the fill of primary buttons (inverted) |
+| `--card` | `#1A1A1D` | `#FFFFFF` | Card surfaces |
+| `--popover` | `#222225` | `#FFFFFF` | Dialogs, menus, tooltips |
+| `--primary` | `#CDF426` | `#A4D104` | Lime = the learner's progress only (rings, bars, completed checks, the current-lesson play glyph, toggles/sliders). Never for selection chips, buttons, badges or timestamps — those are neutral. Light mode is one step deeper so fills don't vanish on white; `text-primary` resolves to `--primary-ink` (`#4F6A00`) |
+| `--secondary` | `#222225` | `#EFEFF2` | Hover states, segmented-control track |
+| `--accent` | `#2A2A2E` | `#E6E6EA` | Neutral hover surface, empty progress track — **not** the brand color |
+| `--muted-foreground` | `#98989F` | `#6A6A70` | Secondary text, labels |
+| `--border` | `#2A2A2D` | `#E5E5E9` | Card borders, dividers |
+| `--input` | `#3A3A3E` | `#D2D2D7` | Switch off-track, stronger control borders |
+| `--destructive` | `#FF6961` | `#D70015` | Errors, danger actions |
+| `--success` | `#4ADE80` | `#1F8A3B` | Completed |
+| `--info` | `#64B5FF` | `#0066CC` | Informational states |
+| `--warning` | `#FFB340` | `#A85A00` | Streaks, caution |
+
+Primary CTA = `<Button>` default variant: an inverted neutral pill (`bg-foreground text-background`). Buttons and search fields are `rounded-full`.
+
+Elevation: `shadow-card` (cards, outline controls) and `shadow-pop` (dialogs, popovers, hovered cards) — both theme-aware tokens. Dialogs use `rounded-2xl bg-popover shadow-pop` without a border.
+
+Every text token meets WCAG AA (4.5:1) on `background`, `card` and `secondary` in both themes. Light-mode lime is deliberately darker (`#4F7A00`) so white text on it and lime text on white stay legible.
+
+### Contrast rules
+
+- Never fade readable text with opacity (`text-muted-foreground/50`, `text-primary/60`…). Use `text-muted-foreground` for secondary text. Opacity is only for decorative icons/shapes.
+- No text smaller than 10px; `text-[11px]` is the floor for labels, `text-xs` for most metadata.
+- Placeholders use `placeholder:text-muted-foreground` (no opacity).
+- Disabled controls use `disabled:opacity-50` on the whole control, not a fainter text color.
+- Borders use `border-border` (surfaces) or `border-input` (controls) without opacity modifiers.
 
 ### Using colors in Tailwind
 
@@ -107,15 +130,15 @@ Three font families are defined in the theme:
 
 | Font | Variable | Tailwind Class | Usage |
 |---|---|---|---|
-| DM Sans | `--font-sans` | `font-sans` | Body text (default) |
-| Syne | `--font-heading` | `font-heading` | Headings, titles |
-| JetBrains Mono | `--font-mono` | `font-mono` | Numbers, stats, code |
+| Geist (bundled via `@fontsource-variable`, never a CDN) | `--font-sans` | `font-sans` | Body text (default) |
+| Geist (tight tracking) | `--font-heading` | `font-heading` | Headings, titles — use `font-semibold`, not `font-bold` |
+| Geist Mono | `--font-mono` | `font-mono` | Video timestamps and code only. Everything else numeric (durations, counts, stats, dates) is `font-sans tabular-nums` |
 
 ### Typography patterns
 
 ```tsx
-// Page heading
-<h2 className="font-heading text-2xl font-bold text-foreground">Title</h2>
+// Page heading (breadcrumb in the shell header is small; the page owns the big title)
+<h2 className="font-heading text-3xl font-semibold text-foreground">Title</h2>
 
 // Body text
 <p className="font-sans text-sm text-muted-foreground">Description</p>
@@ -158,49 +181,26 @@ export function MyComponent({ title, className }: MyComponentProps) {
 }
 ```
 
-### Reusable squircle components
+### Shared UI primitives
 
-Two reusable components wrap the squircle layered-border pattern for use across the app:
-
-**`SquircleSearch`** — search input with squircle shape, focus border, and clear button:
+Always prefer these over hand-rolled `<button>`/`<input>` styling:
 
 ```tsx
-import { SquircleSearch } from "@/components/SquircleSearch";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 
-<SquircleSearch
-  value={search}
-  onChange={setSearch}
-  placeholder="Search courses..."
-  className="flex-1"
-/>
+<Button onClick={handleImport}><Plus weight="bold" />Import Course</Button>   // primary CTA
+<Button variant="outline">Filters</Button>                                     // secondary
+<Button variant="ghost" size="icon-sm" aria-label="Close"><X /></Button>      // icon-only (aria-label required)
+<Button variant="destructive-outline">Delete all</Button>
+
+<SearchInput value={search} onChange={setSearch} placeholder="Search courses..." />
 ```
 
-Props: `value`, `onChange`, `placeholder?`, `className?`
+`Button` variants: `default`, `outline`, `secondary`, `ghost`, `destructive`, `destructive-outline`, `link`. Sizes: `default` (h-9), `xs`, `sm`, `lg`, `icon`, `icon-xs`, `icon-sm`, `icon-lg`. Buttons default to `type="button"`.
 
-**`SquircleButton`** — button with squircle shape and three variants:
-
-```tsx
-import { SquircleButton } from "@/components/SquircleButton";
-
-// Primary CTA (lime background)
-<SquircleButton variant="primary" onClick={handleImport}>
-  <Plus className="size-4" weight="bold" />
-  Import Course
-</SquircleButton>
-
-// Secondary with active/toggle state (bordered, switches to accent when active)
-<SquircleButton variant="secondary" active={showFilters} onClick={toggle}>
-  <Funnel className="size-4" />
-  Filters
-</SquircleButton>
-
-// Ghost (no border, hover background)
-<SquircleButton variant="ghost" onClick={handleClick}>
-  Label
-</SquircleButton>
-```
-
-Props: `variant?` (`"primary"` | `"secondary"` | `"ghost"`), `active?`, `className?`, plus all native button attributes.
+For a toggled/active state, pass classes (e.g. `className={cn(active && "border-primary/40 text-primary")}`) and set `aria-pressed` / `aria-expanded`.
 
 ### Using shadcn/ui components
 
@@ -245,114 +245,40 @@ import { cn } from "@/lib/utils";
 
 | Pattern | Classes |
 |---|---|
-| Page container | `mx-auto max-w-6xl px-6 py-8` |
+| Page container | `mx-auto w-full max-w-[1400px] px-6 pt-12 pb-20 lg:px-10` (Settings/forms: `max-w-3xl`). The top 28px of the content panel is a window drag strip — keep content below it. Pages own their gutters, so the course page can still dock its curriculum flush |
+| Page header | eyebrow/`<h1 className="font-heading text-[34px] font-semibold">` + one plain, true sentence in `text-[15px] text-muted-foreground` |
+| Section heading | `font-heading text-[20px] font-semibold`; sections are separated by whitespace, not boxed cards with icon headers |
 | Section header | `mb-6 flex items-baseline justify-between` |
-| Card grid | `grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3` |
+| Card grid | `grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4` (fills any width) |
+| Segmented control / tabs | `<SegmentedControl>` from `@/components/ui/segmented-control` (one sliding thumb on a spring, arrow-key navigation) |
+| Pop-up choices (sort, filter) | `<Menu>` from `@/components/ui/menu` with a ghost `Button` trigger + `CaretUpDown` — not native `<select>`, not chip rows that truncate |
+| Progress | `<ProgressRing>` (`ui/progress-ring`) for compact/at-a-glance, `<ProgressBar>` for rows. Both fill from empty on arrival |
+| Courses | `<CourseCard>` grid `grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-x-6 gap-y-8`; artwork via `<CourseCover title author accentColor>` (generative, title printed on it) |
 | Flex row with gap | `flex items-center gap-3` |
 | Flex column with gap | `flex flex-col gap-3` |
 
-### Border radius & Squircles
+### Border radius
 
-The base radius is `0.625rem`. Ckourse uses two shape systems:
+The base radius is `0.75rem`. Use standard `border-radius` everywhere; there are no custom clip-path shapes.
 
-**Standard `border-radius`** — for cards, containers, and badges:
+| Element | Class |
+|---|---|
+| Cards, panels | `rounded-2xl border border-border bg-card shadow-card` |
+| Dialogs, popovers | `rounded-2xl bg-popover shadow-pop` |
+| Buttons, search fields | `rounded-full` |
+| Inputs, list rows, nav items, icon tiles | `rounded-lg` |
+| Small inner controls, tooltips | `rounded-md` |
+| Badges, pills, avatars, progress bars | `rounded-full` |
 
-```tsx
-<div className="rounded-xl" />  // Cards, containers, page panels
-<div className="rounded-md" />  // Standard buttons, text inputs
-<div className="rounded-full" /> // Badges, avatars, progress bars
-```
-
-**Squircle (iOS-style superellipse)** — for interactive surfaces that need a premium feel. Uses SVG `<clipPath>` definitions at root level and CSS utility classes.
-
-Two variants are available:
-
-| Variant | CSS Class | Usage |
-|---|---|---|
-| `squircle` | `.squircle` | More rounded — sidebar buttons, search bars, toolbar buttons, tooltips |
-| `squircle-subtle` | `.squircle-subtle` | Less rounded — cards and wider rectangular elements |
-
-```tsx
-// Apply squircle shape via CSS class
-<button className="squircle bg-sidebar-accent p-3">
-<div className="squircle-subtle bg-card">
-```
-
-#### When to use squircle vs border-radius
-
-| Element | Shape | Class |
-|---|---|---|
-| Nav button backgrounds | Squircle | `squircle` |
-| Sidebar toggle button | Squircle | `squircle` |
-| Search bar | Squircle | `squircle` |
-| Toolbar buttons | Squircle | `squircle` |
-| Tooltips | Squircle | `squircle` |
-| Icon containers (collapsed states) | Squircle | `squircle` |
-| Course cards | Squircle (subtle) | `squircle-subtle` |
-| Badges / pills | Standard | `rounded-full` |
-| Page containers / panels | Standard | `rounded-xl` |
-| Inner buttons (inside cards) | Standard | `rounded-lg` or `rounded-md` |
-| Modals / dialogs (surface) | Either | `squircle` or `rounded-xl` |
-
-#### Squircle border pattern
-
-Since `clip-path` clips `box-shadow`, `outline`, and `ring`, use **layered divs** to create borders on squircled elements:
-
-```tsx
-// Squircle with border (e.g., search bar, card)
-<div className="relative">
-  <div className="squircle absolute inset-0 bg-border" />       {/* border layer */}
-  <div className="squircle absolute inset-px bg-card" />         {/* fill layer */}
-  <div className="relative px-4 py-2.5">                        {/* content */}
-    ...
-  </div>
-</div>
-
-// With focus state (use group)
-<div className="group/search relative">
-  <div className="squircle absolute inset-0 bg-border/25 transition-colors group-focus-within/search:bg-primary" />
-  <div className="squircle absolute inset-px bg-card" />
-  <div className="relative">
-    <input ... />
-  </div>
-</div>
-
-// With hover state (e.g., card)
-<div className="group relative">
-  <div className="squircle-subtle absolute inset-0 bg-border" />
-  <div className="squircle-subtle absolute inset-[1px] bg-card transition-colors group-hover:bg-secondary" />
-  ...
-</div>
-```
-
-#### Squircle setup requirement
-
-Both SVG clip-path definitions must exist in the DOM. They are currently rendered by `SquircleClipDefs` in `src/components/Sidebar.tsx`. If the sidebar is not present on a page, ensure the clip-path SVGs are rendered elsewhere (e.g., in `App.tsx`):
-
-```tsx
-<svg width="0" height="0" className="absolute">
-  <defs>
-    <clipPath id="squircle" clipPathUnits="objectBoundingBox">
-      <path d="M 0.5,0 C 0.82,0 0.95,0 0.975,0.025 C 1,0.05 1,0.18 1,0.5 C 1,0.82 1,0.95 0.975,0.975 C 0.95,1 0.82,1 0.5,1 C 0.18,1 0.05,1 0.025,0.975 C 0,0.95 0,0.82 0,0.5 C 0,0.18 0,0.05 0.025,0.025 C 0.05,0 0.18,0 0.5,0 Z" />
-    </clipPath>
-    <clipPath id="squircle-subtle" clipPathUnits="objectBoundingBox">
-      <path d="M 0.5,0 C 0.9,0 0.97,0 0.985,0.015 C 1,0.03 1,0.1 1,0.5 C 1,0.9 1,0.97 0.985,0.985 C 0.97,1 0.9,1 0.5,1 C 0.1,1 0.03,1 0.015,0.985 C 0,0.97 0,0.9 0,0.5 C 0,0.1 0,0.03 0.015,0.015 C 0.03,0 0.1,0 0.5,0 Z" />
-    </clipPath>
-  </defs>
-</svg>
-```
-
-#### Squircle limitations
-
-- `clip-path` clips overflow — no visible `box-shadow`, `outline`, or `ring` on squircled elements. Use the **layered div border pattern** instead.
-- Do not nest squircled elements (clip-path does not compound well).
-- Squircle scales to the element's bounding box — works best on roughly square or mildly rectangular elements. Use `squircle-subtle` for wider elements like cards.
+Focus rings and shadows work normally — use `focus-visible:ring-*` / `focus-visible:border-ring`. A global `:focus-visible` outline exists in `index.css` as a fallback.
 
 ---
 
 ## Interactive States
 
-Use `transition-colors` for hover/focus animations:
+Motion is Apple-quiet: hovers change color or opacity only (no lifts, scale-ups, glows or sliding arrows); presses dim (`active:opacity-80`); entrances use `card-in` (fade + 4px rise, ~300ms) with stagger capped (`Math.min(index, 10) * 30ms`).
+
+Use `transition-colors` for hover/focus animations. Controls revealed on hover (`opacity-0 group-hover:opacity-100`) must also add `focus-visible:opacity-100` so keyboard users can reach them. Icon-only buttons need `aria-label` (and `title` for a tooltip). Panels kept mounted for animation but visually hidden need `inert` so they aren't tabbable.
 
 ```tsx
 // Button / clickable element
@@ -392,6 +318,7 @@ import loadingAnimation from "@/assets/lotties/loading.json";
 ### Guidelines
 
 - **Never use CSS spinners** — always use Lottie for loading states
+- **Fast local reads show nothing** (an empty `aria-busy` block of the page's height). A loader that flashes for 50ms is noise; reserve Lottie for genuinely slow work (imports, network sources)
 - Use `size-28` for inline/contextual loading, `size-40` for full-screen overlays
 - Full-screen overlays use `bg-background/80 backdrop-blur-sm` for the backdrop
 - Add a short label (`font-sans text-sm font-semibold`) and optional sublabel (`text-xs text-muted-foreground`) below the animation
@@ -458,7 +385,11 @@ import { cn } from "../../lib/utils";
 - [ ] `className` prop supported and merged
 - [ ] Correct font family (`font-sans`, `font-heading`, or `font-mono`)
 - [ ] Interactive elements have `transition-colors` and hover states
-- [ ] Correct shape: `squircle` for interactive surfaces, `squircle-subtle` for cards, `rounded-full` for badges
-- [ ] Squircle borders use layered div pattern (not `ring` or `border`)
+- [ ] Uses `Button` / `Input` / `SearchInput` instead of hand-styled controls
+- [ ] No opacity-faded readable text; nothing under 10px
+- [ ] Icon-only buttons have `aria-label`; toggles have `aria-pressed`/`aria-expanded`
+- [ ] Correct radius: `rounded-2xl` cards (`rounded-3xl` hero cards / drop zones), `rounded-lg` rows and nav items, `rounded-full` buttons, pills, segmented controls
+- [ ] Lime appears only where it shows the learner's progress
+- [ ] Copy is plain and human ("Remove from library", "Start over"), never system-speak
 - [ ] Icons from `@phosphor-icons/react` with `size-4` default
 - [ ] Placed in the correct directory per the structure table

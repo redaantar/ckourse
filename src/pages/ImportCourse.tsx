@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLottie } from "lottie-react";
 import {
   FolderOpenIcon as FolderOpen,
   UploadSimpleIcon as UploadSimple,
   FileVideoIcon as FileVideo,
   CaretLeftIcon as CaretLeft,
-  CheckCircleIcon as CheckCircle,
-  PaletteIcon as Palette,
   WarningIcon as Warning,
   CaretDownIcon as CaretDown,
   CaretRightIcon as CaretRight,
@@ -16,6 +13,9 @@ import {
   PencilSimpleIcon as PencilSimple,
   CloudIcon as Cloud,
   HardDrivesIcon as HardDrives,
+  CaretUpDownIcon as CaretUpDown,
+  PlusIcon as Plus,
+  TrashIcon as Trash,
 } from "@phosphor-icons/react";
 import {
   DndContext,
@@ -34,9 +34,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import loadingAnimation from "@/assets/lotties/loading.json";
 import { cn } from "@/lib/utils";
-import { SquircleButton } from "@/components/ui/SquircleButton";
+import { Button } from "@/components/ui/button";
+import { LoadingAnimation } from "@/components/LoadingAnimation";
 import type { CourseCategory, ParsedCourse, ParsedSection, ParsedLesson } from "@/types";
 import { selectCourseFolder, parseCourseFolder } from "@/lib/courseParser";
 import {
@@ -49,7 +49,12 @@ import {
 import { getServers, parseServerFolder, type ServerConfig } from "@/lib/servers";
 import { ServerBrowser } from "@/components/ServerBrowser";
 import { importCourse, getCustomCategories, addCustomCategory, deleteCustomCategory } from "@/lib/store";
-import { EASE_OUT } from "@/lib/constants";
+import { DEFAULT_COURSE_COLOR } from "@/lib/color";
+import { Input } from "@/components/ui/input";
+import { CourseColorPicker } from "@/components/ui/course-color-picker";
+import { Menu, MenuContent, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { CourseCover } from "@/components/dashboard/CourseCover";
+import { formatDuration } from "@/lib/format";
 
 function makeId() {
   return Math.random().toString(36).slice(2, 11);
@@ -69,21 +74,6 @@ const builtinCategories: { value: CourseCategory; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-const accentColors = [
-  "#61DAFB",
-  "#F74C00",
-  "#8B5CF6",
-  "#3178C6",
-  "#2496ED",
-  "#336791",
-  "#E44D26",
-  "#38BDF8",
-  "#10B981",
-  "#F59E0B",
-  "#EC4899",
-  "#C8F135",
-];
-
 interface ImportCourseProps {
   className?: string;
 }
@@ -93,6 +83,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [step, setStep] = useState<"select" | "configure">("select");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [waitingForDrive, setWaitingForDrive] = useState(false);
   const [servers, setServers] = useState<ServerConfig[]>([]);
   const [browsing, setBrowsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -111,14 +102,8 @@ export function ImportCourse({ className }: ImportCourseProps) {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [category, setCategory] = useState<string>("other");
-  const [accentColor, setAccentColor] = useState(accentColors[0]);
+  const [accentColor, setAccentColor] = useState(DEFAULT_COURSE_COLOR);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
-
-  const { View: importingAnimationView } = useLottie({
-    animationData: loadingAnimation,
-    loop: true,
-    className: "size-40",
-  });
 
   useEffect(() => {
     getCustomCategories().then(setCustomCategories).catch(() => {});
@@ -160,6 +145,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
 
   const handleDriveImport = async () => {
     showError(null);
+    setWaitingForDrive(true);
     try {
       if (!(await driveCredentialsStatus())) {
         showError("Connect your Google Drive before importing.", true);
@@ -170,6 +156,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
       }
       // Folder picker opens in the system browser; user picks one course folder.
       const folder = await drivePickFolder();
+      setWaitingForDrive(false);
       setIsLoading(true);
       applyParsed(await parseDriveFolder(folder.id, folder.name));
     } catch (err) {
@@ -184,6 +171,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
       }
       showError(msg || "Failed to import from Google Drive");
     } finally {
+      setWaitingForDrive(false);
       setIsLoading(false);
     }
   };
@@ -300,6 +288,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
     setIsImporting(true);
+    showError(null);
 
     try {
       const courseId = await importCourse(parsedCourse, {
@@ -318,46 +307,72 @@ export function ImportCourse({ className }: ImportCourseProps) {
 
   if (isImporting) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
-        {importingAnimationView}
+      <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
+        <LoadingAnimation className="size-16" />
         <p className="mt-2 font-sans text-sm font-semibold text-foreground">
-          Importing course...
+          Adding to your library…
         </p>
         <p className="mt-1.5 font-sans text-xs text-muted-foreground">
-          Setting up your library
+          Setting up chapters and lessons
         </p>
       </div>
     );
   }
 
   return (
-    <div className={cn("mx-auto max-w-5xl", className)}>
-      <button
-        onClick={() => (step === "configure" ? setStep("select") : navigate("/"))}
-        className="mb-6 flex items-center gap-1.5 font-sans text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <CaretLeft className="size-4" />
-        {step === "configure" ? "Change folder" : "Back to library"}
-      </button>
-
-      <div
-        className="mb-8"
-        style={{ animation: `card-in 350ms ${EASE_OUT} both` }}
-      >
-        <h2 className="font-heading text-2xl font-bold text-foreground">
-          Import Course
-        </h2>
-        <p className="mt-2 font-sans text-sm text-muted-foreground">
-          {step === "select"
-            ? "Select a folder containing your course videos to get started."
-            : "Review the detected structure and configure your course details."}
-        </p>
+    <div
+      className={cn(
+        "mx-auto w-full max-w-[1200px] px-6 pt-12 pb-20 lg:px-10",
+        className,
+      )}
+    >
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            showError(null);
+            if (step === "configure") setStep("select");
+            else navigate("/");
+          }}
+          className="-ml-3 text-muted-foreground"
+        >
+          <CaretLeft className="size-4" />
+          {step === "configure" ? "Choose a different folder" : "Home"}
+        </Button>
+        <div className="flex items-center gap-2" aria-label={`Step ${step === "select" ? 1 : 2} of 2`}>
+          {[1, 2].map((n) => (
+            <span
+              key={n}
+              aria-hidden="true"
+              className={cn(
+                "h-1.5 rounded-full transition-[width,background-color] duration-300",
+                (step === "select" ? 1 : 2) === n ? "w-5 bg-foreground" : "w-1.5 bg-input",
+              )}
+            />
+          ))}
+          <span className="ml-1 font-sans text-[13px] font-medium text-muted-foreground">
+            Step {step === "select" ? 1 : 2} of 2
+          </span>
+        </div>
       </div>
+
+      <header className="mb-10">
+        <h1 className="font-heading text-[34px] leading-tight font-semibold text-foreground">
+          {step === "select" ? "Add a course" : "Make it yours"}
+        </h1>
+        <p className="mt-1 font-sans text-[15px] text-muted-foreground">
+          {step === "select"
+            ? "Point Ckourse at a folder of videos. It finds the chapters, lessons, subtitles and files for you."
+            : "Here's what we found. Name it, give it a color, and fix the order if anything looks off."}
+        </p>
+      </header>
 
       {step === "select" ? (
         <FolderSelectStep
           isDragOver={isDragOver}
           isLoading={isLoading}
+          waitingForDrive={waitingForDrive}
           error={parseError}
           errorNeedsSettings={errorNeedsSettings}
           onGoToSettings={() => navigate("/settings")}
@@ -365,7 +380,9 @@ export function ImportCourse({ className }: ImportCourseProps) {
             e.preventDefault();
             setIsDragOver(true);
           }}
-          onDragLeave={() => setIsDragOver(false)}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragOver(false);
+          }}
           onDrop={handleDrop}
           onBrowse={handleFolderSelect}
           onImportDrive={handleDriveImport}
@@ -390,6 +407,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
           accentColor={accentColor}
           onAccentColorChange={setAccentColor}
           onImport={handleImport}
+          error={parseError}
         />
       ) : null}
 
@@ -407,6 +425,7 @@ export function ImportCourse({ className }: ImportCourseProps) {
 function FolderSelectStep({
   isDragOver,
   isLoading,
+  waitingForDrive,
   error,
   errorNeedsSettings,
   onGoToSettings,
@@ -419,54 +438,54 @@ function FolderSelectStep({
 }: {
   isDragOver: boolean;
   isLoading: boolean;
+  waitingForDrive: boolean;
   error: string | null;
   errorNeedsSettings: boolean;
   onGoToSettings: () => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
+  onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onBrowse: () => void;
   onImportDrive: () => void;
   onImportServer: () => void;
 }) {
-  const { View: scanningAnimationView } = useLottie({
-    animationData: loadingAnimation,
-    loop: true,
-    className: "size-28",
-  });
+  const busy = isLoading || waitingForDrive;
 
   return (
-    <div style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}>
+    <div className="flex flex-col gap-4">
       <div
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        className="group relative cursor-pointer transition-colors"
-        onClick={isLoading ? undefined : onBrowse}
+        role="button"
+        tabIndex={busy ? -1 : 0}
+        aria-label="Choose a course folder"
+        aria-busy={isLoading}
+        aria-disabled={busy}
+        className={cn(
+          "group rounded-3xl border-2 border-dashed transition-colors duration-200",
+          busy ? "cursor-default" : "cursor-pointer",
+          isDragOver
+            ? "border-primary bg-primary/8"
+            : "border-input bg-card/50 hover:border-muted-foreground/60 hover:bg-card",
+        )}
+        onClick={busy ? undefined : onBrowse}
+        onKeyDown={(e) => {
+          if (busy) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onBrowse();
+          }
+        }}
       >
-        <div
-          className={cn(
-            "squircle-subtle absolute inset-0 transition-colors",
-            isDragOver ? "bg-primary" : "bg-border"
-          )}
-        />
-        <div
-          className={cn(
-            "squircle-subtle absolute inset-px transition-colors",
-            isDragOver ? "bg-primary/10" : "bg-card group-hover:bg-secondary"
-          )}
-        />
-
-        <div className="relative flex flex-col items-center gap-4 px-6 py-16">
+        <div className="flex min-h-80 flex-col items-center justify-center gap-5 px-6 py-14" aria-live="polite">
           {isLoading ? (
             <>
-              {scanningAnimationView}
+              <LoadingAnimation />
               <div className="text-center">
-                <p className="font-sans text-sm font-semibold text-foreground">
-                  Scanning folder...
-                </p>
-                <p className="mt-1.5 font-sans text-xs text-muted-foreground">
-                  Detecting videos, subtitles, and resources
+                <p className="font-sans text-[15px] font-semibold text-foreground">Reading the folder…</p>
+                <p className="mt-1 font-sans text-[13px] text-muted-foreground">
+                  Finding videos, subtitles and resources
                 </p>
               </div>
             </>
@@ -474,75 +493,59 @@ function FolderSelectStep({
             <>
               <div
                 className={cn(
-                  "flex size-16 items-center justify-center rounded-2xl transition-colors",
-                  isDragOver ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
+                  "flex size-18 items-center justify-center rounded-[22px] shadow-card transition-[background-color,color,transform] duration-300",
+                  isDragOver ? "scale-110 bg-primary text-primary-foreground" : "bg-secondary text-foreground",
                 )}
+                style={{ transitionTimingFunction: "var(--spring-snappy)" }}
               >
                 {isDragOver ? (
-                  <UploadSimple className="size-7" weight="bold" />
+                  <UploadSimple className="size-8" weight="bold" />
                 ) : (
-                  <FolderOpen className="size-7" />
+                  <FolderOpen className="size-8" weight="duotone" />
                 )}
               </div>
 
               <div className="text-center">
-                <p className="font-sans text-sm font-semibold text-foreground">
-                  {isDragOver ? "Drop folder here" : "Drag & drop a course folder"}
+                <p className="font-heading text-lg font-semibold text-foreground">
+                  {isDragOver ? "Let go to add it" : "Drop a course folder here"}
                 </p>
-                <p className="mt-1.5 font-sans text-xs text-muted-foreground">
-                  or click to browse your files
+                <p className="mt-1 font-sans text-[13px] text-muted-foreground">
+                  One folder per course. Subfolders become chapters.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 rounded-full border border-border/50 bg-secondary px-4 py-2">
-                <FolderOpen className="size-4 text-muted-foreground" />
-                <span className="font-sans text-xs font-medium text-muted-foreground">
-                  Browse Folder
-                </span>
-              </div>
+              <span
+                aria-hidden="true"
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-border bg-card px-4 font-sans text-sm font-medium text-foreground shadow-card transition-colors group-hover:bg-secondary"
+              >
+                Choose a folder…
+              </span>
             </>
           )}
         </div>
       </div>
 
-      <div className="my-4 flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <span className="font-sans text-xs text-muted-foreground/60">or</span>
-        <div className="h-px flex-1 bg-border" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <SourceCard
+          icon={<Cloud className="size-5" weight="duotone" />}
+          title="Google Drive"
+          description={waitingForDrive ? "Finish signing in in your browser…" : "Stream a course from a Drive folder"}
+          onClick={onImportDrive}
+          disabled={busy}
+        />
+        <SourceCard
+          icon={<HardDrives className="size-5" weight="duotone" />}
+          title="Your server"
+          description="SFTP · WebDAV · S3"
+          onClick={onImportServer}
+          disabled={busy}
+        />
       </div>
 
-      <button
-        type="button"
-        onClick={isLoading ? undefined : onImportDrive}
-        disabled={isLoading}
-        className={cn(
-          "flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3",
-          "font-sans text-sm font-medium text-foreground transition-colors",
-          "hover:bg-secondary disabled:opacity-50",
-        )}
-      >
-        <Cloud className="size-4 text-muted-foreground" />
-        Import from Google Drive
-      </button>
-
-      <button
-        type="button"
-        onClick={isLoading ? undefined : onImportServer}
-        disabled={isLoading}
-        className={cn(
-          "mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3",
-          "font-sans text-sm font-medium text-foreground transition-colors",
-          "hover:bg-secondary disabled:opacity-50",
-        )}
-      >
-        <HardDrives className="size-4 text-muted-foreground" />
-        Import from a server
-      </button>
-
       {error && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg bg-destructive/10 px-4 py-3">
-          <Warning className="size-4 shrink-0 text-destructive" weight="bold" />
-          <p className="font-sans text-sm text-destructive">
+        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3">
+          <Warning className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" />
+          <p className="font-sans text-sm text-destructive select-text">
             {error}
             {errorNeedsSettings && (
               <>
@@ -550,9 +553,9 @@ function FolderSelectStep({
                 <button
                   type="button"
                   onClick={onGoToSettings}
-                  className="font-medium text-destructive underline underline-offset-2 transition-opacity hover:opacity-70"
+                  className="font-semibold text-destructive underline underline-offset-2 transition-opacity hover:opacity-80"
                 >
-                  Go to Settings
+                  Open Settings
                 </button>
               </>
             )}
@@ -560,13 +563,44 @@ function FolderSelectStep({
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-center gap-2">
-        <FileVideo className="size-3.5 text-muted-foreground/50" />
-        <p className="font-sans text-xs text-muted-foreground/50">
-          Supports .mp4, .mkv, .avi, .mov and other video formats
-        </p>
-      </div>
+      <p className="mt-2 flex items-center justify-center gap-1.5 font-sans text-xs text-muted-foreground">
+        <FileVideo className="size-3.5" aria-hidden="true" />
+        Works with MP4, MKV, MOV, AVI and most other video formats
+      </p>
     </div>
+  );
+}
+
+/** A secondary source: equal in shape to each other, quieter than the folder drop zone above. */
+function SourceCard({
+  icon,
+  title,
+  description,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group flex items-center gap-3.5 rounded-2xl border border-border bg-card p-4 text-left shadow-card transition-colors duration-150 hover:bg-secondary disabled:pointer-events-none disabled:opacity-50"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground transition-colors group-hover:bg-accent">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-sans text-sm font-semibold text-foreground">{title}</span>
+        <span className="block truncate font-sans text-xs text-muted-foreground">{description}</span>
+      </span>
+      <CaretRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 
@@ -588,6 +622,7 @@ function ConfigureStep({
   accentColor,
   onAccentColorChange,
   onImport,
+  error,
 }: {
   course: ParsedCourse;
   structureIds: StructureIds;
@@ -606,6 +641,7 @@ function ConfigureStep({
   accentColor: string;
   onAccentColorChange: (v: string) => void;
   onImport: () => void;
+  error: string | null;
 }) {
   const totalLessons = course.sections.reduce((sum, s) => sum + s.lessons.length, 0);
 
@@ -623,219 +659,224 @@ function ConfigureStep({
     onReorderSections(fromIdx, toIdx);
   };
 
+  const totalMins = Math.round(
+    course.sections.reduce((sum, s) => sum + s.lessons.reduce((t, l) => t + l.durationSecs, 0), 0) / 60,
+  );
+  const canImport = !!title.trim() && totalLessons > 0;
+  const guessed = course.confidence !== "high";
+
   return (
-    <div className="flex flex-col gap-6">
-      {course.confidence !== "high" && (
-        <div
-          className={cn(
-            "flex items-start gap-3 rounded-lg px-4 py-3",
-            course.confidence === "low"
-              ? "bg-destructive/10"
-              : "bg-info/10"
-          )}
-          style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}
-        >
-          <Warning
-            className={cn(
-              "mt-0.5 size-4 shrink-0",
-              course.confidence === "low" ? "text-destructive" : "text-info"
-            )}
-            weight="bold"
-          />
-          <div>
-            <p
-              className={cn(
-                "font-sans text-sm font-medium",
-                course.confidence === "low" ? "text-destructive" : "text-info"
-              )}
-            >
-              {course.confidence === "low"
-                ? "Low confidence parse — review carefully"
-                : "Some structure was inferred"}
-            </p>
-            <ul className="mt-1 space-y-0.5">
-              {course.confidenceReasons.map((reason, i) => (
-                <li
-                  key={i}
-                  className="font-sans text-xs text-muted-foreground"
-                >
-                  {reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-
-      <div style={{ animation: `card-in 350ms ${EASE_OUT} 50ms both` }}>
-        <div className="group relative">
-          <div className="squircle-subtle absolute inset-0 bg-border" />
-          <div className="squircle-subtle absolute inset-px bg-card" />
-          <div className="relative flex items-center gap-3 px-4 py-3">
-            <FolderOpen className="size-4 shrink-0 text-primary" />
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {course.folderPath}
-            </span>
-            <div className="ml-auto flex items-center gap-1.5">
-              <CheckCircle className="size-4 text-primary" weight="fill" />
-              <span className="font-sans text-xs font-medium text-primary">
-                {totalLessons} lessons in {course.sections.length}{" "}
-                {course.sections.length === 1 ? "section" : "sections"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="flex flex-col gap-5"
-        style={{ animation: `card-in 350ms ${EASE_OUT} 100ms both` }}
+    <div className="flex flex-col gap-10">
+      <div className="grid gap-x-10 gap-y-12 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      {/*
+        Details: one tall column — the cover on top, the fields that shape it directly
+        beneath, so every keystroke and swatch lands just above where you're typing.
+        Its height sets the row; the chapter list matches it and scrolls inside.
+      */}
+      <section
+        aria-labelledby="import-details-title"
+        className="flex flex-col gap-3"
       >
-        <h3 className="font-heading text-base font-bold text-foreground">
-          Course Details
-        </h3>
+        <h2 id="import-details-title" className="px-1 font-heading text-[20px] font-semibold text-foreground">
+          Details
+        </h2>
+        <div className="flex flex-col gap-6 rounded-2xl border border-border bg-card p-5 shadow-card">
+        <CourseCover
+          title={title.trim() || "Untitled course"}
+          author={author.trim() || undefined}
+          accentColor={accentColor}
+          className="aspect-[16/10] rounded-xl shadow-pop"
+        />
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <FieldGroup label="Title">
-              <input
+        <div className="flex min-w-0 flex-col gap-6">
+          <div className="flex flex-col gap-4">
+            <Field label="Title" htmlFor="import-title">
+              <Input
+                id="import-title"
                 type="text"
+                dir="auto"
                 value={title}
                 onChange={(e) => onTitleChange(e.target.value)}
                 placeholder="Course title"
-                className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                aria-invalid={!title.trim() || undefined}
               />
-            </FieldGroup>
-
-            <FieldGroup label="Author">
-              <input
+            </Field>
+            <Field label="Instructor" htmlFor="import-author">
+              <Input
+                id="import-author"
                 type="text"
+                dir="auto"
                 value={author}
                 onChange={(e) => onAuthorChange(e.target.value)}
-                placeholder="Instructor name"
-                className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+                placeholder="Who teaches it"
               />
-            </FieldGroup>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <CategoryPicker
+            </Field>
+            <TopicField
               category={category}
               onCategoryChange={onCategoryChange}
               customCategories={customCategories}
               onCustomCategoriesChange={onCustomCategoriesChange}
             />
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground">
-                <Palette className="size-3.5" />
-                Accent Color
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {accentColors.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => onAccentColorChange(color)}
-                    className={cn(
-                      "size-7 rounded-full border-2 transition-transform duration-150",
-                      accentColor === color
-                        ? "scale-110 border-foreground"
-                        : "border-transparent hover:scale-105"
-                    )}
-                    style={{ backgroundColor: color }}
-                  />
+          <div className="flex flex-col gap-2.5">
+            <span id="import-accent-label" className="font-sans text-xs font-medium text-muted-foreground">
+              Color
+            </span>
+            <CourseColorPicker value={accentColor} onChange={onAccentColorChange} labelledBy="import-accent-label" />
+          </div>
+        </div>
+
+        {(course.description || course.resources.length > 0) && (
+          <div className="flex flex-col gap-4 border-t border-border pt-6">
+            {course.description && (
+              <div className="flex flex-col gap-1.5">
+                <span className="font-sans text-xs font-medium text-muted-foreground">About, from the README</span>
+                <p dir="auto" className="line-clamp-3 font-sans text-[13px] leading-relaxed text-foreground select-text">
+                  {course.description}
+                </p>
+              </div>
+            )}
+            {course.resources.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 font-sans text-xs font-medium text-muted-foreground">Course files</span>
+                {course.resources.map((r, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 font-sans text-xs text-muted-foreground"
+                    title={r.title}
+                  >
+                    <File className="size-3 shrink-0" />
+                    <span className="truncate">{r.title}</span>
+                  </span>
                 ))}
               </div>
-            </div>
-          </div>
-
-          {course.description && (
-            <div className="flex flex-col gap-2">
-              <label className="font-sans text-xs font-medium text-muted-foreground">
-                Description (from README)
-              </label>
-              <p className="line-clamp-4 font-sans text-xs leading-relaxed text-muted-foreground">
-                {course.description}
-              </p>
-            </div>
-          )}
-
-        {course.resources.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <label className="font-sans text-xs font-medium text-muted-foreground">
-              Course Resources
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {course.resources.map((r, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary px-2.5 py-1 font-sans text-xs text-muted-foreground"
-                >
-                  <File className="size-3" />
-                  {r.title}
-                </span>
-              ))}
-            </div>
+            )}
           </div>
         )}
-      </div>
-
-      <div
-        className="flex flex-col gap-3"
-        style={{ animation: `card-in 350ms ${EASE_OUT} 150ms both` }}
-      >
-        <h3 className="font-heading text-base font-bold text-foreground">
-          Course Structure
-        </h3>
-
-        <div className="h-90 overflow-y-scroll rounded-xl border border-border bg-card px-3 py-2">
-          <DndContext
-            sensors={sectionSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleSectionDragEnd}
-          >
-            <SortableContext
-              items={structureIds.sections}
-              strategy={verticalListSortingStrategy}
-            >
-              {course.sections.map((section, si) => (
-                <SortableSection
-                  key={structureIds.sections[si]}
-                  id={structureIds.sections[si]}
-                  section={section}
-                  sectionIndex={si}
-                  lessonIds={structureIds.lessons[si] ?? []}
-                  defaultOpen={course.sections.length <= 3}
-                  onRenameSection={(t) => onRenameSection(si, t)}
-                  onRenameLesson={(li, t) => onRenameLesson(si, li, t)}
-                  onReorderLessons={(from, to) => onReorderLessons(si, from, to)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
         </div>
+      </section>
+
+      {/* Out of flow on wide screens, so it takes the Details column's height instead of setting its own */}
+      <div className="relative min-h-[28rem] lg:min-h-0">
+      <section
+        aria-labelledby="import-structure-title"
+        className="flex flex-col gap-3 lg:absolute lg:inset-0"
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
+          <h2 id="import-structure-title" className="font-heading text-[20px] font-semibold text-foreground">
+            Chapters and lessons
+          </h2>
+          <span className="font-sans text-[13px] text-muted-foreground tabular-nums">
+            {course.sections.length} {course.sections.length === 1 ? "chapter" : "chapters"} · {totalLessons}{" "}
+            {totalLessons === 1 ? "lesson" : "lessons"}
+            {totalMins > 0 && ` · ${formatDuration(totalMins)}`}
+          </span>
+        </div>
+
+        <div className="flex max-h-[36rem] min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card lg:max-h-none">
+          {/* The order caveat lives on the list it's about, not as a page-wide alarm */}
+          <div
+            className={cn(
+              "flex shrink-0 items-start gap-2.5 border-b border-border px-4 py-3 font-sans text-[13px]",
+              guessed && course.confidence === "low" ? "bg-destructive/8" : guessed ? "bg-warning/8" : "bg-secondary/50",
+            )}
+          >
+            {guessed ? (
+              <Warning
+                className={cn(
+                  "mt-0.5 size-4 shrink-0",
+                  course.confidence === "low" ? "text-destructive" : "text-warning",
+                )}
+                weight="fill"
+              />
+            ) : (
+              <DotsSixVertical className="mt-0.5 size-4 shrink-0 text-muted-foreground" weight="bold" />
+            )}
+            <p className="text-muted-foreground">
+              {guessed && (
+                <span className="font-medium text-foreground">
+                  {course.confidence === "low" ? "Hard to read this folder — please check the order. " : "Order was guessed. "}
+                </span>
+              )}
+              {guessed && course.confidenceReasons.length > 0 && `${course.confidenceReasons.join(" · ")}. `}
+              Drag to reorder, double-click a name to rename.
+            </p>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+            <DndContext sensors={sectionSensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
+              <SortableContext items={structureIds.sections} strategy={verticalListSortingStrategy}>
+                {course.sections.map((section, si) => (
+                  <SortableSection
+                    key={structureIds.sections[si]}
+                    id={structureIds.sections[si]}
+                    section={section}
+                    lessonIds={structureIds.lessons[si] ?? []}
+                    defaultOpen={course.sections.length <= 3}
+                    onRenameSection={(t) => onRenameSection(si, t)}
+                    onRenameLesson={(li, t) => onRenameLesson(si, li, t)}
+                    onReorderLessons={(from, to) => onReorderLessons(si, from, to)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+        </div>
+      </section>
+      </div>
       </div>
 
-      <div
-        className="flex items-center justify-end gap-3 border-t border-border pt-6"
-        style={{ animation: `card-in 350ms ${EASE_OUT} 200ms both` }}
-      >
-        <span className="font-sans text-xs text-muted-foreground">
-          {totalLessons} lessons will be imported
-        </span>
-        <SquircleButton
-          variant="primary"
-          onClick={onImport}
-          disabled={!title.trim()}
-        >
-          <UploadSimple className="size-4" weight="bold" />
-          Import Course
-        </SquircleButton>
+      {/*
+        Commit bar: pinned to the bottom of the view, so the one action on this page
+        is reachable whether the course has 3 lessons or 300.
+      */}
+      <div className="sticky bottom-4 z-20 -mx-2">
+        <div className="flex items-center gap-4 rounded-2xl border border-border bg-popover/95 p-3 pl-4 shadow-pop backdrop-blur-xl">
+          <CourseCover
+            title={title}
+            accentColor={accentColor}
+            showTitle={false}
+            className="hidden aspect-[16/10] w-14 shrink-0 rounded-md sm:block"
+          />
+          <div className="min-w-0 flex-1">
+            <p dir="auto" className="truncate font-sans text-sm font-medium text-foreground">
+              {title.trim() || "Untitled course"}
+            </p>
+            <p
+              className={cn("truncate font-sans text-xs", error || !title.trim() ? "text-destructive" : "text-muted-foreground")}
+              title={error ?? course.folderPath}
+              role={error ? "alert" : undefined}
+            >
+              {error ?? (title.trim() ? course.folderPath : "Give the course a title to add it")}
+            </p>
+          </div>
+          <Button size="lg" onClick={onImport} disabled={!canImport} className="shrink-0">
+            Add to library
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function CategoryPicker({
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label htmlFor={htmlFor} className="font-sans text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Topic as a field that opens a menu, instead of a cloud of chips that wraps unevenly
+ * and grows with every custom topic. Creating one happens in place; removing a
+ * custom topic is offered only while it's the one selected.
+ */
+function TopicField({
   category,
   onCategoryChange,
   customCategories,
@@ -866,7 +907,7 @@ function CategoryPicker({
       await addCustomCategory(trimmed);
       onCustomCategoriesChange([...customCategories, trimmed]);
     }
-    onCategoryChange(trimmed);
+    onCategoryChange(isBuiltin ? trimmed.toLowerCase() : trimmed);
     setNewName("");
     setAdding(false);
   };
@@ -877,96 +918,83 @@ function CategoryPicker({
     if (category === name) onCategoryChange("other");
   };
 
+  const label = builtinCategories.find((c) => c.value === category)?.label ?? category;
+  const isCustom = customCategories.includes(category);
+
+  if (adding) {
+    return (
+      <Field label="Topic" htmlFor="import-new-topic">
+        <Input
+          id="import-new-topic"
+          ref={inputRef}
+          dir="auto"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onBlur={handleAdd}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleAdd();
+            if (e.key === "Escape") {
+              setNewName("");
+              setAdding(false);
+            }
+          }}
+          placeholder="New topic — Return to add, Esc to cancel"
+        />
+      </Field>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-2">
-      <label className="font-sans text-xs font-medium text-muted-foreground">
-        Category
-      </label>
-      <div className="flex flex-wrap gap-1.5">
-        {builtinCategories.map((cat) => (
-          <button
-            key={cat.value}
-            onClick={() => onCategoryChange(cat.value)}
-            className={cn(
-              "rounded-full border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
-              category === cat.value
-                ? "border-primary/25 bg-primary/15 text-primary"
-                : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {cat.label}
-          </button>
-        ))}
-        {customCategories.map((name) => (
-          <div
-            key={name}
-            className={cn(
-              "group flex items-center gap-1 rounded-full border pl-3 pr-1.5 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
-              category === name
-                ? "border-primary/25 bg-primary/15 text-primary"
-                : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <button onClick={() => onCategoryChange(name)}>{name}</button>
-            <button
-              onClick={() => handleDelete(name)}
-              className="flex items-center justify-center rounded-full p-0.5 opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100"
-            >
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-                <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
-        ))}
-        {adding ? (
-          <div className="flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 pl-3 pr-1.5 py-1.5">
-            <input
-              ref={inputRef}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAdd();
-                if (e.key === "Escape") { setAdding(false); setNewName(""); }
-              }}
-              placeholder="Category name"
-              className="w-24 bg-transparent font-sans text-xs text-primary placeholder:text-primary/50 focus:outline-none"
-            />
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={handleAdd}
-              className="flex items-center justify-center rounded-full p-1 text-primary transition-colors hover:bg-primary/20"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { setAdding(false); setNewName(""); }}
-              className="flex items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:bg-black/10"
-            >
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="rounded-full border border-dashed border-border/50 px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-primary/25 hover:text-primary"
-          >
-            + Custom
-          </button>
+    <Field label="Topic" htmlFor="import-topic">
+    <Menu>
+      <MenuTrigger asChild>
+        <button
+          id="import-topic"
+          type="button"
+          className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-card px-3 text-left transition-[border-color,box-shadow] outline-none hover:border-input focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 data-[state=open]:border-input"
+        >
+          <span dir="auto" className="min-w-0 flex-1 truncate font-sans text-sm text-foreground">
+            {label}
+          </span>
+          <CaretUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      </MenuTrigger>
+      <MenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
+        <MenuRadioGroup value={category} onValueChange={onCategoryChange}>
+          {builtinCategories.map((c) => (
+            <MenuRadioItem key={c.value} value={c.value}>
+              {c.label}
+            </MenuRadioItem>
+          ))}
+          {customCategories.length > 0 && <MenuSeparator />}
+          {customCategories.map((name) => (
+            <MenuRadioItem key={name} value={name}>
+              <span dir="auto" className="truncate">
+                {name}
+              </span>
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuItem onSelect={() => setAdding(true)}>
+          <Plus />
+          New topic…
+        </MenuItem>
+        {isCustom && (
+          <MenuItem onSelect={() => void handleDelete(category)} className="text-destructive [&_svg]:text-destructive">
+            <Trash />
+            Delete “{category}”
+          </MenuItem>
         )}
-      </div>
-    </div>
+      </MenuContent>
+    </Menu>
+    </Field>
   );
 }
 
 function SortableSection({
   id,
   section,
-  sectionIndex,
   lessonIds,
   defaultOpen,
   onRenameSection,
@@ -975,7 +1003,6 @@ function SortableSection({
 }: {
   id: string;
   section: ParsedSection;
-  sectionIndex: number;
   lessonIds: string[];
   defaultOpen: boolean;
   onRenameSection: (newTitle: string) => void;
@@ -983,6 +1010,7 @@ function SortableSection({
   onReorderLessons: (from: number, to: number) => void;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const sectionMins = Math.round(section.lessons.reduce((sum, l) => sum + l.durationSecs, 0) / 60);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
@@ -1012,47 +1040,53 @@ function SortableSection({
     <div
       ref={setNodeRef}
       style={dragStyle}
-      {...attributes}
     >
-      <div
-        style={{
-          animation: isDragging
-            ? undefined
-            : `card-in 250ms ${EASE_OUT} ${(sectionIndex + 2) * 40}ms both`,
-        }}
-      >
+      <div>
         <div
           onClick={() => setIsOpen(!isOpen)}
-          className="group/section flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 transition-colors hover:bg-secondary"
+          className="group/section flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-2.5 transition-colors hover:bg-secondary"
         >
           <button
             type="button"
+            {...attributes}
             {...listeners}
             onClick={(e) => e.stopPropagation()}
             aria-label="Drag to reorder section"
-            className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground active:cursor-grabbing"
+            className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground opacity-0 transition-[opacity,color] group-hover/section:opacity-100 hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
           >
             <DotsSixVertical className="size-4" weight="bold" />
           </button>
-          {isOpen ? (
-            <CaretDown className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <CaretRight className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? "Collapse section" : "Expand section"}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground"
+          >
+            {isOpen ? (
+              <CaretDown className="size-3.5" />
+            ) : (
+              <CaretRight className="size-3.5" />
+            )}
+          </button>
           <EditableTitle
             value={section.title}
             onSave={onRenameSection}
             ariaLabel="Edit section title"
-            className="flex-1 truncate text-left font-sans text-sm font-medium text-foreground"
-            inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-sm font-medium text-foreground focus:outline-none"
+            className="flex-1 truncate text-left font-sans text-sm font-semibold text-foreground"
+            inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-sm font-semibold text-foreground focus:outline-none"
           />
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="shrink-0 font-sans text-xs text-muted-foreground tabular-nums">
             {section.lessons.length} {section.lessons.length === 1 ? "lesson" : "lessons"}
+            {sectionMins > 0 && ` · ${formatDuration(sectionMins)}`}
           </span>
         </div>
 
         {isOpen && (
-          <div className="ml-5 border-l border-border/50 pl-2">
+          <div className="pb-1 pl-7">
             <DndContext
               sensors={lessonSensors}
               collisionDetection={closestCenter}
@@ -1103,18 +1137,18 @@ function SortableLesson({
     <div
       ref={setNodeRef}
       style={dragStyle}
-      {...attributes}
-      className="group flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-secondary"
+      className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
     >
       <button
         type="button"
+        {...attributes}
         {...listeners}
         aria-label="Drag to reorder lesson"
-        className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground active:cursor-grabbing"
+        className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground opacity-0 transition-[opacity,color] group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
       >
         <DotsSixVertical className="size-4" weight="bold" />
       </button>
-      <span className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary font-mono text-[10px] font-medium text-muted-foreground group-hover:bg-muted">
+      <span className="w-5 shrink-0 text-right font-sans text-xs text-muted-foreground tabular-nums">
         {index + 1}
       </span>
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1122,12 +1156,30 @@ function SortableLesson({
           value={lesson.title}
           onSave={onRename}
           ariaLabel="Edit lesson title"
-          className="min-w-0 flex-1 truncate font-sans text-xs text-foreground"
-          inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-xs text-foreground focus:outline-none"
+          className="min-w-0 flex-1 truncate text-left font-sans text-[13px] text-foreground"
+          inputClassName="w-full min-w-0 flex-1 bg-transparent font-sans text-[13px] text-foreground focus:outline-none"
         />
         {lesson.subtitles.length > 0 && (
-          <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary">
-            SUB
+          <span
+            className="shrink-0 rounded border border-border px-1 font-sans text-[10px] leading-4 font-semibold text-muted-foreground"
+            title="Has subtitles"
+          >
+            CC
+          </span>
+        )}
+        {lesson.resources.length > 0 && (
+          <span
+            title={lesson.resources.map((r) => r.title).join("\n")}
+            className="flex shrink-0 items-center gap-0.5 font-sans text-[11px] text-muted-foreground"
+          >
+            <File className="size-3" aria-hidden="true" />
+            {lesson.resources.length}
+            <span className="sr-only">{lesson.resources.length === 1 ? "file" : "files"}</span>
+          </span>
+        )}
+        {lesson.durationSecs > 0 && (
+          <span className="w-12 shrink-0 text-right font-sans text-xs text-muted-foreground tabular-nums">
+            {formatDuration(Math.max(1, Math.round(lesson.durationSecs / 60)))}
           </span>
         )}
       </div>
@@ -1200,6 +1252,7 @@ function EditableTitle({
           }
         }}
         aria-label={ariaLabel}
+        dir="auto"
         className={inputClassName}
       />
     );
@@ -1208,9 +1261,10 @@ function EditableTitle({
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
       <span
+        dir="auto"
         onDoubleClick={startEditing}
         className={className}
-        title="Double-click to edit"
+        title={value}
       >
         {value}
       </span>
@@ -1218,33 +1272,11 @@ function EditableTitle({
         type="button"
         onClick={startEditing}
         aria-label={ariaLabel}
-        className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover/section:opacity-100 group-hover:opacity-100"
+        title={ariaLabel}
+        className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/section:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
       >
         <PencilSimple className="size-3" weight="bold" />
       </button>
-    </div>
-  );
-}
-
-function FieldGroup({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="font-sans text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <div className="group/field relative">
-        <div className="squircle absolute inset-0 bg-border/25 transition-colors group-focus-within/field:bg-primary" />
-        <div className="squircle absolute inset-px bg-card" />
-        <div className="relative px-4 py-2.5">
-          {children}
-        </div>
-      </div>
     </div>
   );
 }

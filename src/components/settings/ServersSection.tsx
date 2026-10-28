@@ -10,6 +10,7 @@ import {
   SpinnerGapIcon as SpinnerGap,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   getServers,
   saveServer,
@@ -22,7 +23,7 @@ import {
   type ServerInput,
   type ServerKind,
 } from "@/lib/servers";
-import { SectionCard, CredInput } from "./SettingsPrimitives";
+import { SettingsGroup, SettingRow, SettingPanel, CredInput } from "./SettingsPrimitives";
 
 const KINDS: ServerKind[] = ["sftp", "webdav", "s3"];
 
@@ -69,16 +70,17 @@ function formFrom(server: ServerConfig): ServerInput {
   };
 }
 
-export function ServersSection({ index }: { index: number }) {
+export function ServersSection() {
   const [servers, setServers] = useState<ServerConfig[]>([]);
   const [form, setForm] = useState<ServerInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ server: ServerConfig; courses: number } | null>(
-    null,
-  );
+  const [confirmDelete, setConfirmDelete] = useState<{
+    server: ServerConfig;
+    courses: number;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -167,16 +169,11 @@ export function ServersSection({ index }: { index: number }) {
   };
 
   return (
-    <SectionCard
-      title="Servers"
-      icon={<HardDrives className="size-4 text-info" weight="bold" />}
-      index={index}
+    <SettingsGroup
+      title="Your servers"
+      description="Stream courses from your own machine over SFTP, WebDAV or S3."
+      footer="Passwords and keys live in your system keychain, never in Ckourse's database."
     >
-      <p className="px-2 pb-2 font-sans text-xs text-muted-foreground">
-        Stream courses straight from your own server. Passwords and keys are stored in
-        your system keychain, never in the app's database.
-      </p>
-
       {form ? (
         <ServerForm
           form={form}
@@ -188,106 +185,124 @@ export function ServersSection({ index }: { index: number }) {
           onCancel={closeForm}
         />
       ) : (
-        <div className="flex flex-col gap-2 py-1">
-          {servers.length === 0 && (
-            <div className="rounded-lg bg-secondary/40 px-3 py-4 text-center">
-              <p className="font-sans text-xs text-muted-foreground">
-                No servers yet. Add one to import courses over SFTP, WebDAV or S3.
+        <>
+          {servers.map((server) => (
+            <SettingRow
+              key={server.id}
+              icon={<HardDrives />}
+              label={<span title={server.name}>{server.name}</span>}
+              description={
+                <span title={describe(server)}>
+                  {describe(server)}
+                </span>
+              }
+            >
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => startEdit(server)}
+                aria-label={`Edit ${server.name}`}
+                title="Edit"
+              >
+                <PencilSimple className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => void askDelete(server)}
+                className="hover:bg-destructive/10 hover:text-destructive"
+                aria-label={`Remove ${server.name}`}
+                title="Remove"
+              >
+                <Trash className="size-4" />
+              </Button>
+            </SettingRow>
+          ))}
+
+          {servers.length === 0 ? (
+            <SettingRow
+              icon={<HardDrives />}
+              label="No servers yet"
+              description="Add one to import courses from your own machine"
+            >
+              <Button variant="outline" size="sm" onClick={startAdd}>
+                <Plus className="size-4" weight="bold" />
+                Add server
+              </Button>
+            </SettingRow>
+          ) : (
+            <button
+              onClick={startAdd}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left font-sans text-[13px] font-medium text-foreground transition-colors hover:bg-secondary"
+            >
+              <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+                <Plus className="size-[18px]" />
+              </span>
+              Add server
+            </button>
+          )}
+        </>
+      )}
+
+      {(notice || error || confirmDelete) && (
+        <SettingPanel>
+          {notice && (
+            <div
+              role="status"
+              className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2"
+            >
+              <CheckCircle className="mt-px size-4 shrink-0 text-success" weight="fill" />
+              <p className="font-sans text-xs text-foreground select-text">{notice}</p>
+            </div>
+          )}
+
+          {error && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2"
+            >
+              <WarningCircle className="mt-px size-4 shrink-0 text-destructive" weight="fill" />
+              <p className="min-w-0 whitespace-pre-wrap font-sans text-xs text-destructive select-text">
+                {error}
               </p>
             </div>
           )}
 
-          {servers.map((server) => (
+          {confirmDelete && (
             <div
-              key={server.id}
-              className="flex items-center justify-between gap-4 rounded-lg bg-secondary/40 px-3 py-2.5"
+              role="alertdialog"
+              aria-label="Confirm remove server"
+              className="flex flex-wrap items-center justify-between gap-3"
             >
-              <div className="min-w-0">
-                <div className="truncate font-sans text-sm font-medium text-foreground">
-                  {server.name}
-                </div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {describe(server)}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  onClick={() => startEdit(server)}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label={`Edit ${server.name}`}
+              <p className="min-w-0 flex-1 font-sans text-sm text-foreground">
+                Remove <span className="font-semibold">{confirmDelete.server.name}</span>?
+                {confirmDelete.courses > 0 && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    {confirmDelete.courses} imported{" "}
+                    {confirmDelete.courses === 1 ? "course" : "courses"} will stop playing —
+                    progress and notes are kept.
+                  </span>
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)} autoFocus>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void handleDelete()}
+                  disabled={busy}
                 >
-                  <PencilSimple className="size-4" />
-                </button>
-                <button
-                  onClick={() => void askDelete(server)}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                  aria-label={`Remove ${server.name}`}
-                >
-                  <Trash className="size-4" />
-                </button>
+                  Remove
+                </Button>
               </div>
             </div>
-          ))}
-
-          <button
-            onClick={startAdd}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5",
-              "font-sans text-sm font-medium text-muted-foreground",
-              "transition-colors hover:border-primary/40 hover:text-foreground",
-            )}
-          >
-            <Plus className="size-4" weight="bold" />
-            Add a server
-          </button>
-        </div>
+          )}
+        </SettingPanel>
       )}
-
-      {notice && (
-        <div className="mx-2 mt-2 flex items-start gap-2 rounded-lg bg-primary/10 px-3 py-2">
-          <CheckCircle className="mt-px size-4 shrink-0 text-primary" weight="fill" />
-          <p className="font-sans text-xs text-foreground">{notice}</p>
-        </div>
-      )}
-
-      {error && (
-        <div className="mx-2 mt-2 flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2">
-          <WarningCircle className="mt-px size-4 shrink-0 text-destructive" weight="fill" />
-          <p className="whitespace-pre-wrap font-sans text-xs text-destructive">{error}</p>
-        </div>
-      )}
-
-      {confirmDelete && (
-        <div className="mx-2 mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3">
-          <p className="font-sans text-xs text-foreground">
-            Remove <span className="font-semibold">{confirmDelete.server.name}</span>?
-            {confirmDelete.courses > 0 && (
-              <>
-                {" "}
-                {confirmDelete.courses} imported{" "}
-                {confirmDelete.courses === 1 ? "course" : "courses"} will stop playing —
-                progress and notes are kept.
-              </>
-            )}
-          </p>
-          <div className="mt-2.5 flex justify-end gap-2">
-            <button
-              onClick={() => setConfirmDelete(null)}
-              className="rounded-lg px-3 py-1.5 font-sans text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => void handleDelete()}
-              disabled={busy}
-              className="rounded-lg bg-destructive px-3 py-1.5 font-sans text-sm font-semibold text-background transition-colors hover:bg-destructive/90 disabled:opacity-50"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      )}
-    </SectionCard>
+    </SettingsGroup>
   );
 }
 
@@ -318,24 +333,29 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
   const [useKey, setUseKey] = useState(false);
 
   return (
-    <div className="flex flex-col gap-3 py-1">
-      <div className="px-2">
+    <SettingPanel>
+      <div>
         <span className="mb-1.5 block font-sans text-xs font-medium text-muted-foreground">
           Type
         </span>
-        <div className="flex gap-1.5">
+        <div
+          role="group"
+          aria-label="Server type"
+          className="flex gap-0.5 rounded-xl bg-secondary p-1"
+        >
           {KINDS.map((kind) => (
             <button
               key={kind}
+              aria-pressed={form.kind === kind}
               onClick={() => {
                 set("kind", kind);
                 set("port", defaultPort(kind));
               }}
               className={cn(
-                "flex-1 rounded-lg border px-3 py-2 font-sans text-xs font-medium transition-colors",
+                "flex-1 rounded-lg px-3 py-1.5 font-sans text-xs font-medium transition-colors",
                 form.kind === kind
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
+                  ? "bg-card text-foreground shadow-card"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {SERVER_KIND_LABELS[kind]}
@@ -371,6 +391,7 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
                 value={String(form.port ?? 22)}
                 onChange={(v) => set("port", Number(v) || 22)}
                 placeholder="22"
+                inputMode="numeric"
               />
             </div>
           </div>
@@ -381,26 +402,32 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
             placeholder="ubuntu"
           />
 
-          <div className="px-2">
-            <div className="flex gap-1.5">
+          <div>
+            <div
+              role="group"
+              aria-label="Authentication method"
+              className="flex gap-0.5 rounded-xl bg-secondary p-1"
+            >
               <button
+                aria-pressed={!useKey}
                 onClick={() => setUseKey(false)}
                 className={cn(
-                  "flex-1 rounded-lg border px-3 py-1.5 font-sans text-xs transition-colors",
+                  "flex-1 rounded-lg px-3 py-1.5 font-sans text-xs font-medium transition-colors",
                   !useKey
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
+                    ? "bg-card text-foreground shadow-card"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 Password
               </button>
               <button
+                aria-pressed={useKey}
                 onClick={() => setUseKey(true)}
                 className={cn(
-                  "flex-1 rounded-lg border px-3 py-1.5 font-sans text-xs transition-colors",
+                  "flex-1 rounded-lg px-3 py-1.5 font-sans text-xs font-medium transition-colors",
                   useKey
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
+                    ? "bg-card text-foreground shadow-card"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 Private key
@@ -410,8 +437,8 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
 
           {useKey ? (
             <>
-              <label className="block px-2">
-                <span className="mb-1 block font-sans text-xs font-medium text-muted-foreground">
+              <label className="block">
+                <span className="mb-1.5 block font-sans text-xs font-medium text-muted-foreground">
                   Private key {isEdit && "(leave blank to keep the saved one)"}
                 </span>
                 <textarea
@@ -421,9 +448,9 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
                   spellCheck={false}
                   rows={4}
                   className={cn(
-                    "w-full resize-y rounded-lg border border-border bg-secondary px-3 py-2",
-                    "font-mono text-xs text-foreground placeholder:text-muted-foreground/40",
-                    "outline-none transition-colors focus:border-primary",
+                    "w-full resize-y rounded-lg border border-border bg-background px-3 py-2 hover:border-input",
+                    "font-mono text-xs text-foreground placeholder:text-muted-foreground",
+                    "outline-none transition-colors focus-visible:border-ring",
                   )}
                 />
               </label>
@@ -510,7 +537,7 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
             type="password"
             placeholder="••••••••"
           />
-          <label className="flex items-center gap-2.5 px-2">
+          <label className="flex items-center gap-2.5">
             <input
               type="checkbox"
               checked={form.pathStyle ?? true}
@@ -518,8 +545,8 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
               className="size-4 accent-primary"
             />
             <span className="font-sans text-xs text-muted-foreground">
-              Path-style URLs — needed for MinIO and most self-hosted gateways. Turn off
-              for AWS and Cloudflare R2.
+              Path-style URLs — needed for MinIO and most self-hosted gateways. Turn off for AWS and
+              Cloudflare R2.
             </span>
           </label>
         </>
@@ -532,42 +559,24 @@ function ServerForm({ form, set, busy, testing, onSave, onTest, onCancel }: Serv
         placeholder={form.kind === "s3" ? "/" : "/srv/courses"}
       />
 
-      <div className="flex items-center justify-between gap-2 px-2">
-        <button
-          onClick={onTest}
-          disabled={busy || testing}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg border border-border px-3 py-2",
-            "font-sans text-sm text-muted-foreground transition-colors",
-            "hover:text-foreground disabled:opacity-50",
-          )}
-        >
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <Button variant="outline" onClick={onTest} disabled={busy || testing}>
           {testing ? (
             <SpinnerGap className="size-4 animate-spin" />
           ) : (
             <PlugsConnected className="size-4" />
           )}
-          Test connection
-        </button>
+          {testing ? "Testing…" : "Test connection"}
+        </Button>
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
+          <Button variant="ghost" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={busy || testing}
-            className={cn(
-              "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
-              "transition-colors hover:bg-primary/90 disabled:opacity-50",
-            )}
-          >
+          </Button>
+          <Button onClick={onSave} disabled={busy || testing}>
             {isEdit ? "Save changes" : "Add server"}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </SettingPanel>
   );
 }

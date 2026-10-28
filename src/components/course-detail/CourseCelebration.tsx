@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { EASE_OUT } from "@/lib/constants";
+import { EASE_OUT, SPRING_BOUNCY } from "@/lib/constants";
+import { courseColor } from "@/lib/color";
 
 interface Particle {
   x: number;
@@ -8,43 +9,49 @@ interface Particle {
   vy: number;
   size: number;
   color: string;
+  /** Spin around the axis facing the viewer */
   rotation: number;
-  rotationSpeed: number;
-  opacity: number;
+  spin: number;
+  /** Phase of the flip around the particle's long axis — paper tumbling, not a spinning coin */
+  flip: number;
+  flipSpeed: number;
   shape: "rect" | "circle";
 }
 
-const PARTICLE_COUNT = 80;
-const GRAVITY = 0.15;
-const FRICTION = 0.99;
-const FADE_START = 0.7; // start fading at 70% of lifetime
+// Physics in CSS px and seconds, integrated against real elapsed time — so the
+// fall is identical on a 60Hz panel and a 120Hz ProMotion one.
+const PARTICLE_COUNT = 90;
+const GRAVITY = 1400; // px/s²
+const DRAG = 2.2; // 1/s — paper is mostly air resistance; this is what makes it float
+const DURATION = 2800; // ms
+const FADE_START = 0.7;
 
-const COLORS = [
-  "#C8F135", // primary lime
-  "#5B9CF6", // info blue
-  "#FF6B6B", // destructive red
-  "#EDEDED", // foreground white
-  "#A8E620", // darker lime
-  "#7DC4FF", // lighter blue
-  "#FFD93D", // gold
-];
+const BRAND_LIME = "#CDF426";
+const PAPER_WHITE = "#F5F5F7";
 
-function createParticles(width: number, height: number): Particle[] {
+/** The course's own color, the brand lime and white — the course is the hero here. */
+function palette(accentColor?: string): string[] {
+  const accent = accentColor ? courseColor(accentColor) : "#64B5FF";
+  return [accent, accent, BRAND_LIME, BRAND_LIME, PAPER_WHITE];
+}
+
+function createParticles(width: number, height: number, colors: string[]): Particle[] {
   const particles: Particle[] = [];
   for (let i = 0; i < PARTICLE_COUNT; i++) {
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.8;
-    const speed = 8 + Math.random() * 12;
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.7;
+    const speed = 700 + Math.random() * 650;
     particles.push({
-      x: width / 2 + (Math.random() - 0.5) * width * 0.3,
-      y: height * 0.5,
-      vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 4,
-      vy: Math.sin(angle) * speed - Math.random() * 4,
-      size: 4 + Math.random() * 6,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      x: width / 2 + (Math.random() - 0.5) * width * 0.25,
+      y: height * 0.55,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 5 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
       rotation: Math.random() * Math.PI * 2,
-      rotationSpeed: (Math.random() - 0.5) * 0.3,
-      opacity: 1,
-      shape: Math.random() > 0.5 ? "rect" : "circle",
+      spin: (Math.random() - 0.5) * 8,
+      flip: Math.random() * Math.PI * 2,
+      flipSpeed: 6 + Math.random() * 10,
+      shape: Math.random() > 0.35 ? "rect" : "circle",
     });
   }
   return particles;
@@ -53,133 +60,126 @@ function createParticles(width: number, height: number): Particle[] {
 interface CourseCelebrationProps {
   show: boolean;
   onDone: () => void;
+  title?: string;
+  accentColor?: string;
 }
 
-export function CourseCelebration({ show, onDone }: CourseCelebrationProps) {
+export function CourseCelebration({ show, onDone, title, accentColor }: CourseCelebrationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
-  const startTimeRef = useRef(0);
+  const startRef = useRef(0);
+  const lastRef = useRef(0);
   const [visible, setVisible] = useState(false);
-  const [textVisible, setTextVisible] = useState(false);
 
-  const DURATION = 3000; // total animation duration in ms
-
-  const animate = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const elapsed = Date.now() - startTimeRef.current;
-    const progress = Math.min(elapsed / DURATION, 1);
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const particles = particlesRef.current;
-    let aliveCount = 0;
-
-    for (const p of particles) {
-      p.vy += GRAVITY;
-      p.vx *= FRICTION;
-      p.vy *= FRICTION;
-      p.x += p.vx;
-      p.y += p.vy;
-      p.rotation += p.rotationSpeed;
-
-      if (progress > FADE_START) {
-        p.opacity = Math.max(0, 1 - (progress - FADE_START) / (1 - FADE_START));
-      }
-
-      if (p.opacity <= 0) continue;
-      aliveCount++;
-
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rotation);
-      ctx.globalAlpha = p.opacity;
-      ctx.fillStyle = p.color;
-
-      if (p.shape === "rect") {
-        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-      } else {
-        ctx.beginPath();
-        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-    }
-
-    if (progress < 1 && aliveCount > 0) {
-      animationRef.current = requestAnimationFrame(animate);
-    } else {
-      // Animation done, start fade out
-      setTimeout(() => {
-        setVisible(false);
-        setTextVisible(false);
-        setTimeout(onDone, 400);
-      }, 200);
-    }
+  const finish = useCallback(() => {
+    setVisible(false);
+    setTimeout(onDone, 400);
   }, [onDone]);
+
+  const animate = useCallback(
+    (now: number) => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+
+      // Clamp dt so a backgrounded tab doesn't teleport everything on return
+      const dt = Math.min((now - lastRef.current) / 1000, 1 / 30);
+      lastRef.current = now;
+      const progress = Math.min((now - startRef.current) / DURATION, 1);
+      const fade = progress > FADE_START ? 1 - (progress - FADE_START) / (1 - FADE_START) : 1;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const p of particlesRef.current) {
+        // Linear drag: v' = g - k·v. Terminal velocity ≈ g/k, about 640px/s
+        p.vx += -DRAG * p.vx * dt;
+        p.vy += (GRAVITY - DRAG * p.vy) * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rotation += p.spin * dt;
+        p.flip += p.flipSpeed * dt;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = p.color;
+        if (p.shape === "rect") {
+          // Foreshortening as the strip tumbles: it thins to an edge and widens again
+          ctx.scale(1, Math.cos(p.flip));
+          ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        finish();
+      }
+    },
+    [finish],
+  );
 
   useEffect(() => {
     if (!show) return;
-
     setVisible(true);
-    setTimeout(() => setTextVisible(true), 200);
+
+    // Reduced motion: the words stay, the flying paper doesn't
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const id = setTimeout(finish, 2200);
+      return () => clearTimeout(id);
+    }
 
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Draw at device resolution so confetti edges stay crisp on Retina
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    particlesRef.current = createParticles(canvas.width, canvas.height);
-    startTimeRef.current = Date.now();
+    particlesRef.current = createParticles(window.innerWidth, window.innerHeight, palette(accentColor));
+    startRef.current = lastRef.current = performance.now();
     animationRef.current = requestAnimationFrame(animate);
 
-    return () => {
-      cancelAnimationFrame(animationRef.current);
-    };
-  }, [show, animate]);
+    return () => cancelAnimationFrame(animationRef.current);
+  }, [show, animate, finish, accentColor]);
 
   if (!show && !visible) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-      style={{
-        opacity: visible ? 1 : 0,
-        transition: `opacity 400ms ${EASE_OUT}`,
-      }}
+      className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+      style={{ opacity: visible ? 1 : 0, transition: `opacity 400ms ${EASE_OUT}` }}
     >
+      <div className="absolute inset-0 bg-background/70" />
+
+      <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 size-full" />
+
       <div
-        className="absolute inset-0 bg-background/40"
+        className="relative flex max-w-md flex-col items-center gap-2 px-6 text-center"
+        role="status"
+        aria-live="polite"
         style={{
           opacity: visible ? 1 : 0,
-          transition: `opacity 500ms ${EASE_OUT}`,
-        }}
-      />
-
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0"
-      />
-
-      <div
-        className="relative flex flex-col items-center gap-2"
-        style={{
-          opacity: textVisible ? 1 : 0,
-          transform: textVisible ? "scale(1) translateY(0)" : "scale(0.9) translateY(12px)",
-          transition: `opacity 500ms ${EASE_OUT}, transform 500ms ${EASE_OUT}`,
+          transform: visible ? "none" : "scale(0.92) translateY(12px)",
+          transition: `opacity 400ms ${EASE_OUT} 150ms, transform ${SPRING_BOUNCY} 150ms`,
         }}
       >
-        <h2 className="font-heading text-3xl font-bold text-foreground">
-          Course Complete!
+        <p className="font-sans text-sm font-medium text-primary">Course complete</p>
+        <h2 className="line-clamp-2 font-heading text-3xl font-semibold text-foreground">
+          {title ?? "You finished it"}
         </h2>
         <p className="font-sans text-sm text-muted-foreground">
-          Congratulations on finishing the course
+          Every lesson, start to finish. That one's yours now.
         </p>
       </div>
     </div>

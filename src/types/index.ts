@@ -35,6 +35,6 @@ export type {
 
 export type { AppSettings } from "./settings";
 
-export type { NavItem, BreadcrumbItem, SectionMemory } from "./navigation";
+export type { NavItem, SectionMemory } from "./navigation";
 
 export type { VideoPlayerHandle } from "./video";

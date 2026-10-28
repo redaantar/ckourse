@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useLottie } from "lottie-react";
 import {
   ArrowSquareOutIcon as ArrowSquareOut,
   ArrowsOutLineHorizontalIcon as ArrowsOutLineHorizontal,
@@ -9,8 +8,9 @@ import {
   WarningCircleIcon as WarningCircle,
   XIcon as X,
 } from "@phosphor-icons/react";
-import loadingAnimation from "@/assets/lotties/loading.json";
+import { LoadingAnimation } from "@/components/LoadingAnimation";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { reportError } from "@/lib/posthog";
 import { openPdfDocument, type PDFDocumentProxy } from "@/lib/pdf";
 import { readResource } from "@/lib/store";
@@ -47,12 +47,6 @@ export function PdfViewer({ resource, onClose, onOpenExternally, className }: Pd
   const [containerWidth, setContainerWidth] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
-
-  const { View: loadingAnimationView } = useLottie({
-    animationData: loadingAnimation,
-    loop: true,
-    className: "size-28",
-  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -207,10 +201,10 @@ export function PdfViewer({ resource, onClose, onOpenExternally, className }: Pd
       {/* Drag strip — keeps the window draggable and clears the traffic lights zone */}
       <div data-tauri-drag-region className="h-7 w-full shrink-0" />
 
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 pb-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-6 pb-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <FilePdf className="size-4 shrink-0 text-muted-foreground" />
-          <h3 className="truncate font-heading text-sm font-bold text-foreground">
+          <h3 className="truncate font-heading text-sm font-semibold text-foreground">
             {resource.title}
           </h3>
         </div>
@@ -233,15 +227,15 @@ export function PdfViewer({ resource, onClose, onOpenExternally, className }: Pd
                   onBlur={() => setPageInput(String(currentPage))}
                   inputMode="numeric"
                   aria-label="Page number"
-                  className="w-10 rounded-md border border-border bg-card px-1.5 py-0.5 text-center font-mono text-xs text-foreground outline-none focus:border-primary"
+                  className="w-11 rounded-md border border-input bg-card px-1.5 py-1 text-center font-sans text-xs tabular-nums text-foreground outline-none focus-visible:border-ring"
                 />
-                <span className="font-mono text-xs text-muted-foreground">/ {numPages}</span>
+                <span className="font-sans text-xs tabular-nums text-muted-foreground">/ {numPages}</span>
               </form>
 
               <ToolbarButton label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={scale <= MIN_SCALE}>
                 <MagnifyingGlassMinus className="size-4" />
               </ToolbarButton>
-              <span className="w-11 text-center font-mono text-xs text-muted-foreground">
+              <span className="w-11 text-center font-sans text-xs tabular-nums text-muted-foreground">
                 {Math.round(scale * 100)}%
               </span>
               <ToolbarButton label="Zoom in" onClick={() => zoomBy(ZOOM_STEP)} disabled={scale >= MAX_SCALE}>
@@ -280,17 +274,14 @@ export function PdfViewer({ resource, onClose, onOpenExternally, className }: Pd
             <p className="font-sans text-sm font-semibold text-foreground">Couldn't open this PDF</p>
             <p className="max-w-md font-sans text-xs text-muted-foreground">{error}</p>
             {onOpenExternally && (
-              <button
-                onClick={onOpenExternally}
-                className="mt-2 rounded-md px-3 py-1.5 font-sans text-xs font-medium text-foreground transition-colors hover:bg-secondary"
-              >
+              <Button variant="outline" size="sm" className="mt-2" onClick={onOpenExternally}>
                 Open in default app
-              </button>
+              </Button>
             )}
           </div>
         ) : !doc || !baseSize ? (
           <div className="flex h-full flex-col items-center justify-center">
-            {loadingAnimationView}
+            <LoadingAnimation />
             <p className="mt-2 font-sans text-sm font-semibold text-foreground">Loading PDF...</p>
           </div>
         ) : (
@@ -414,7 +405,7 @@ function PdfPage({ doc, pageNumber, scale, estimatedSize, root, register }: PdfP
     >
       <canvas ref={canvasRef} className="block" />
       {!rendered && (
-        <span className="absolute inset-0 flex items-center justify-center font-mono text-xs text-neutral-400">
+        <span className="absolute inset-0 flex items-center justify-center font-mono text-xs text-neutral-500">
           {pageNumber}
         </span>
       )}
@@ -439,9 +430,10 @@ function ToolbarButton({ label, onClick, disabled, active, children }: ToolbarBu
       aria-label={label}
       title={label}
       className={cn(
-        "rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent",
+        "rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent",
         active && "bg-secondary text-foreground",
       )}
+      aria-pressed={active}
     >
       {children}
     </button>

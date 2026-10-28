@@ -1,37 +1,19 @@
 import { Link, useLocation } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-import { ArrowRightIcon as ArrowRight, BookmarkSimpleIcon as BookmarkSimple, ClockIcon as Clock, GoogleDriveLogoIcon as GoogleDriveLogo, HardDrivesIcon as HardDrives } from "@phosphor-icons/react";
+import {
+  BookmarkSimpleIcon as BookmarkSimple,
+  CheckIcon as Check,
+  GoogleDriveLogoIcon as GoogleDriveLogo,
+  HardDrivesIcon as HardDrives,
+} from "@phosphor-icons/react";
 import { useState, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Course } from "@/types";
 import { toggleBookmark } from "@/lib/store";
+import { SPRING_BOUNCY } from "@/lib/constants";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { CourseCover } from "./CourseCover";
 
-function getStatusBadge(status: Course["status"]) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge variant="default">
-          Completed
-        </Badge>
-      );
-    case "in-progress":
-      return (
-        <Badge variant="info">
-          In Progress
-        </Badge>
-      );
-    case "not-started":
-      return (
-        <Badge variant="secondary">
-          Not Started
-        </Badge>
-      );
-  }
-}
-
-function formatLastWatched(dateStr: string | null): string {
+export function formatLastWatched(dateStr: string | null): string {
   if (!dateStr) return "Never";
   const date = new Date(dateStr);
   const now = new Date();
@@ -45,115 +27,69 @@ function formatLastWatched(dateStr: string | null): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+export function coursePercent(course: Course): number {
+  return course.totalLessons ? Math.round((course.completedLessons / course.totalLessons) * 100) : 0;
+}
+
+/**
+ * A course as an object on a shelf: the cover carries title and author, the line
+ * below carries only what changes — how far along you are and when you were last here.
+ */
 export function CourseCard({ course, onBookmarkChange }: { course: Course; onBookmarkChange?: () => void }) {
   const location = useLocation();
-  const percentage = Math.round(
-    (course.completedLessons / course.totalLessons) * 100
-  );
+  const percentage = coursePercent(course);
   const isFromDrive = course.folderPath.startsWith("gdrive:");
   const isFromServer = course.folderPath.startsWith("srv:");
+  const done = course.status === "completed";
 
   return (
-    <Link to={`/course/${course.id}?from=${encodeURIComponent(location.pathname + location.search)}`} className="block h-full">
-      <div className="squircle-subtle-wrapper group relative flex h-full flex-col transition-colors">
-        <div className="squircle-subtle absolute inset-0 bg-border" />
-        <div className="squircle-subtle absolute inset-px bg-card transition-colors group-hover:bg-secondary" />
+    <div className="group relative">
+      <Link
+        to={`/course/${course.id}?from=${encodeURIComponent(location.pathname + location.search)}`}
+        aria-label={`${course.title} by ${course.author || "unknown author"}, ${done ? "completed" : `${percentage}% complete`}`}
+        className="flex flex-col gap-2.5 rounded-2xl focus-visible:outline-offset-4"
+      >
+        <CourseCover
+          title={course.title}
+          author={course.author}
+          accentColor={course.accentColor}
+          className="aspect-[16/10] rounded-2xl shadow-card transition-[filter] duration-200 group-hover:brightness-110"
+        />
 
-        <div className="squircle-subtle absolute inset-0 overflow-hidden">
-          <div
-            className="relative flex h-24 items-center justify-center"
-            style={{ backgroundColor: `${course.accentColor}10` }}
-          >
-            <div
-              className="absolute inset-x-0 top-0 h-1.5"
-              style={{ backgroundColor: course.accentColor }}
-            />
-            <span
-              className="font-heading text-2xl font-bold opacity-20"
-              style={{ color: course.accentColor }}
-            >
-              {course.title.split(/[\s—-]/)[0]}
+        <div className="flex items-center gap-2 px-0.5 font-sans text-xs text-muted-foreground">
+          {done ? (
+            <span className="flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Check weight="bold" className="size-2.5" />
             </span>
-          </div>
+          ) : (
+            <ProgressRing value={percentage} size={16} stroke={2.25} />
+          )}
+          <span className="truncate tabular-nums">
+            {done
+              ? "Completed"
+              : course.status === "not-started"
+                ? `${course.totalLessons} lessons`
+                : `${percentage}% · ${course.completedLessons} of ${course.totalLessons}`}
+          </span>
+          {(isFromDrive || isFromServer) && (
+            <span title={isFromDrive ? "Google Drive" : "Your server"} className="flex shrink-0">
+              {isFromDrive ? <GoogleDriveLogo className="size-3.5" /> : <HardDrives className="size-3.5" />}
+              <span className="sr-only">{isFromDrive ? "From Google Drive" : "From your server"}</span>
+            </span>
+          )}
+          {course.lastWatched && <span className="ml-auto shrink-0">{formatLastWatched(course.lastWatched)}</span>}
         </div>
+      </Link>
 
-        {isFromDrive && (
-          <span
-            className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground backdrop-blur-sm"
-            title="Loaded from Google Drive"
-          >
-            <GoogleDriveLogo className="size-3.5 text-info" weight="fill" />
-            Drive
-          </span>
-        )}
-
-        {isFromServer && (
-          <span
-            className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground backdrop-blur-sm"
-            title="Streamed from your server"
-          >
-            <HardDrives className="size-3.5 text-info" weight="fill" />
-            Server
-          </span>
-        )}
-
-        <BookmarkButton bookmarked={course.bookmarked} courseId={course.id} onBookmarkChange={onBookmarkChange} />
-
-        <Card className="relative flex flex-1 flex-col gap-0 border-0 bg-transparent py-0 shadow-none">
-          <div className="h-24 shrink-0" />
-
-          <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-4 pt-3">
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="line-clamp-2 min-h-[2.5em] font-sans text-sm font-semibold leading-tight text-foreground">
-                {course.title}
-              </h3>
-              {getStatusBadge(course.status)}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <p className="font-sans text-xs text-muted-foreground">
-                {course.author || "Unknown author"}
-              </p>
-              <span className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                <Clock className="size-3" />
-                {formatLastWatched(course.lastWatched)}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-medium text-muted-foreground">
-                  {course.completedLessons}/{course.totalLessons} lessons
-                </span>
-                <span className="font-mono text-xs font-medium text-muted-foreground">
-                  {percentage}%
-                </span>
-              </div>
-              <ProgressBar value={percentage} className="bg-border" />
-            </div>
-
-            <div className="mt-auto pt-3">
-              <div className="relative mb-3 h-px">
-                <div className="absolute inset-0 bg-linear-to-r from-transparent via-primary/20 to-transparent" />
-                <div className="absolute inset-0 bg-linear-to-r from-transparent via-primary/50 to-transparent opacity-0 transition-opacity duration-150 group-hover:opacity-100" style={{ transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)" }} />
-              </div>
-              <div className="flex items-center justify-center gap-1.5 font-sans text-xs font-semibold text-primary">
-                {course.status === "not-started" ? "Start Course" : course.status === "completed" ? "Review Course" : "Continue"}
-                <ArrowRight
-                  className="size-3.5 transition-transform duration-150 group-hover:translate-x-1"
-                  style={{ transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)" }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </Link>
+      <BookmarkButton bookmarked={course.bookmarked} courseId={course.id} onBookmarkChange={onBookmarkChange} />
+    </div>
   );
 }
 
 function BookmarkButton({ bookmarked: initialBookmarked, courseId, onBookmarkChange }: { bookmarked: boolean; courseId: number; onBookmarkChange?: () => void }) {
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
+  // Only a save the user just made gets the pop — not every saved card on load
+  const [justSaved, setJustSaved] = useState(false);
 
   // Sync with parent prop when it changes (e.g. after navigating back from course detail)
   useEffect(() => {
@@ -165,20 +101,26 @@ function BookmarkButton({ bookmarked: initialBookmarked, courseId, onBookmarkCha
     e.stopPropagation();
     const newState = await toggleBookmark(courseId);
     setBookmarked(newState);
+    setJustSaved(newState);
     onBookmarkChange?.();
   }, [courseId, onBookmarkChange]);
 
   return (
     <button
       onClick={handleClick}
+      aria-label={bookmarked ? "Remove from Saved" : "Save course"}
+      aria-pressed={bookmarked}
+      title={bookmarked ? "Remove from Saved" : "Save"}
       className={cn(
-        "absolute right-3 top-3 z-10 rounded-md p-1.5 transition-colors",
-        bookmarked
-          ? "text-primary"
-          : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"
+        "absolute top-2.5 right-2.5 z-10 flex size-8 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-opacity duration-150 hover:bg-black/50",
+        !bookmarked && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
       )}
     >
-      <BookmarkSimple className="size-4" weight={bookmarked ? "fill" : "regular"} />
+      <BookmarkSimple
+        className="size-4"
+        weight={bookmarked ? "fill" : "bold"}
+        style={justSaved ? { animation: `check-pop ${SPRING_BOUNCY}` } : undefined}
+      />
     </button>
   );
 }

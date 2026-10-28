@@ -4,16 +4,20 @@ import { usePageVisible } from "@/hooks/usePageVisible";
 import {
   BookmarkSimpleIcon as BookmarkSimple,
   HeartIcon as Heart,
-  SpinnerGapIcon as SpinnerGap,
-  ClockIcon as Clock,
-  CheckCircleIcon as CheckCircle,
+  CheckIcon as Check,
+  PlayIcon as Play,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CourseCard } from "@/components/dashboard/CourseCard";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { CourseCover } from "@/components/dashboard/CourseCover";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { ProgressRing } from "@/components/ui/progress-ring";
 import type { Course, FavoriteLesson } from "@/types";
 import { getBookmarkedCourses, getAllFavorites, toggleFavorite } from "@/lib/store";
-import { EASE_OUT } from "@/lib/constants";
+
+type Tab = "courses" | "lessons";
 
 interface BookmarksProps {
   className?: string;
@@ -23,15 +27,13 @@ export function Bookmarks({ className }: BookmarksProps) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [favorites, setFavorites] = useState<FavoriteLesson[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"courses" | "favorites">("courses");
+  const [activeTab, setActiveTab] = useState<Tab>("courses");
 
   const reload = useCallback(() => {
-    return Promise.all([getBookmarkedCourses(), getAllFavorites()]).then(
-      ([c, f]) => {
-        setCourses(c);
-        setFavorites(f);
-      },
-    );
+    return Promise.all([getBookmarkedCourses(), getAllFavorites()]).then(([c, f]) => {
+      setCourses(c);
+      setFavorites(f);
+    });
   }, []);
 
   useEffect(() => {
@@ -40,6 +42,13 @@ export function Bookmarks({ className }: BookmarksProps) {
 
   // Refresh data when page becomes visible again (keep-alive)
   usePageVisible("/bookmarks", reload);
+
+  // Land on whichever tab actually has something in it
+  useEffect(() => {
+    if (!loading && courses.length === 0 && favorites.length > 0) setActiveTab("lessons");
+    // Only on first load — after that the user's choice wins
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const handleRemoveFavorite = useCallback(
     async (lessonId: number) => {
@@ -50,215 +59,167 @@ export function Bookmarks({ className }: BookmarksProps) {
   );
 
   if (loading) {
-    return (
-      <div className={cn("mx-auto flex max-w-6xl items-center justify-center py-32", className)}>
-        <SpinnerGap className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <div className={cn("min-h-[60vh]", className)} aria-busy="true" />;
   }
 
   const isEmpty = courses.length === 0 && favorites.length === 0;
 
   return (
-    <div className={cn("mx-auto max-w-6xl", className)}>
-      {isEmpty ? (
-        <div
-          className="flex flex-col items-center justify-center gap-3 py-32 text-center"
-          style={{ animation: `card-in 350ms ${EASE_OUT} both` }}
-        >
-          <div className="flex size-12 items-center justify-center rounded-xl bg-secondary">
-            <BookmarkSimple className="size-6 text-muted-foreground" />
-          </div>
-          <h2 className="font-heading text-lg font-bold text-foreground">
-            No bookmarks yet
-          </h2>
-          <p className="max-w-xs font-sans text-sm text-muted-foreground">
-            Bookmark courses and favorite videos to find them quickly here.
+    <div className={cn("mx-auto flex w-full max-w-[1400px] flex-col gap-8 px-6 pt-12 pb-20 lg:px-10", className)}>
+      <header
+        className="flex flex-wrap items-end justify-between gap-4"
+      >
+        <div>
+          <h1 className="font-heading text-[34px] leading-tight font-semibold text-foreground">Saved</h1>
+          <p className="mt-1 font-sans text-[15px] text-muted-foreground">
+            The courses and lessons you wanted to come back to.
           </p>
         </div>
-      ) : (
-        <>
-          <div className="mb-6 flex items-center gap-1">
-            <button
-              onClick={() => setActiveTab("courses")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 font-sans text-sm font-medium transition-colors",
-                activeTab === "courses"
-                  ? "border border-border bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <BookmarkSimple className="size-3.5" />
-              Courses
-              {courses.length > 0 && (
-                <span className="flex size-4 items-center justify-center rounded-full border border-border bg-muted font-mono text-[9px] font-medium text-muted-foreground">
-                  {courses.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("favorites")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 font-sans text-sm font-medium transition-colors",
-                activeTab === "favorites"
-                  ? "border border-border bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Heart className="size-3.5" />
-              Favorites
-              {favorites.length > 0 && (
-                <span className="flex size-4 items-center justify-center rounded-full border border-border bg-muted font-mono text-[9px] font-medium text-muted-foreground">
-                  {favorites.length}
-                </span>
-              )}
-            </button>
+        {!isEmpty && (
+          <SegmentedControl
+            aria-label="Show saved"
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[
+              {
+                value: "courses",
+                ariaLabel: `Courses, ${courses.length}`,
+                label: (
+                  <>
+                    Courses <span className="text-muted-foreground tabular-nums">{courses.length}</span>
+                  </>
+                ),
+              },
+              {
+                value: "lessons",
+                ariaLabel: `Lessons, ${favorites.length}`,
+                label: (
+                  <>
+                    Lessons <span className="text-muted-foreground tabular-nums">{favorites.length}</span>
+                  </>
+                ),
+              },
+            ]}
+          />
+        )}
+      </header>
+
+      {isEmpty ? (
+        <EmptyState
+          className="border-0"
+          size="page"
+          icon={BookmarkSimple}
+          title="Nothing saved yet"
+          description="Save a course from its cover, or heart a lesson in the curriculum. They'll wait for you here."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/">Go to your library</Link>
+            </Button>
+          }
+        />
+      ) : activeTab === "courses" ? (
+        courses.length > 0 ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-x-6 gap-y-8">
+            {courses.map((course) => (
+              <div key={course.id}>
+                <CourseCard course={course} onBookmarkChange={reload} />
+              </div>
+            ))}
           </div>
-
-          {activeTab === "courses" && (
-            <>
-              {courses.length > 0 ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {courses.map((course, index) => (
-                    <div
-                      key={course.id}
-                      style={{
-                        animation: `card-in 350ms ${EASE_OUT} ${index * 50}ms both`,
-                      }}
-                    >
-                      <CourseCard course={course} onBookmarkChange={reload} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptySection
-                  icon={BookmarkSimple}
-                  message="No bookmarked courses"
-                  description="Bookmark a course from your library or course detail page."
-                />
-              )}
-            </>
-          )}
-
-          {activeTab === "favorites" && (
-            <>
-              {favorites.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {favorites.map((fav, index) => (
-                    <FavoriteItem
-                      key={fav.id}
-                      favorite={fav}
-                      index={index}
-                      onRemove={handleRemoveFavorite}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptySection
-                  icon={Heart}
-                  message="No favorite videos"
-                  description="Favorite a video from the curriculum sidebar."
-                />
-              )}
-            </>
-          )}
-        </>
+        ) : (
+          <EmptyState
+            className="border-0"
+            icon={BookmarkSimple}
+            title="No saved courses"
+            description="Hover a course in your library and tap the bookmark to keep it here."
+          />
+        )
+      ) : favorites.length > 0 ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+          {favorites.map((fav) => (
+            <FavoriteItem key={fav.id} favorite={fav} onRemove={handleRemoveFavorite} />
+          ))}
+        </ul>
+      ) : (
+        <EmptyState
+          className="border-0"
+          icon={Heart}
+          title="No saved lessons"
+          description="Tap the heart next to any lesson in a course's curriculum to save it here."
+        />
       )}
-    </div>
-  );
-}
-
-function EmptySection({
-  icon: Icon,
-  message,
-  description,
-}: {
-  icon: React.ElementType;
-  message: string;
-  description: string;
-}) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center gap-2 py-20 text-center"
-      style={{ animation: `card-in 350ms ${EASE_OUT} both` }}
-    >
-      <Icon className="size-8 text-muted-foreground/40" />
-      <p className="font-sans text-sm font-medium text-muted-foreground">{message}</p>
-      <p className="font-sans text-xs text-muted-foreground/60">{description}</p>
     </div>
   );
 }
 
 function FavoriteItem({
   favorite,
-  index,
   onRemove,
 }: {
   favorite: FavoriteLesson;
-  index: number;
   onRemove: (lessonId: number) => void;
 }) {
-  const progress = favorite.duration > 0
-    ? Math.min(favorite.lastPosition / (favorite.duration * 60), 1)
-    : 0;
+  const progress = favorite.duration > 0 ? Math.min(favorite.lastPosition / (favorite.duration * 60), 1) : 0;
   const percentage = Math.round(progress * 100);
 
   return (
-    <Link
-      to={`/course/${favorite.courseId}?lesson=${favorite.lessonId}&from=/bookmarks`}
-      className="group flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:bg-secondary"
-      style={{
-        animation: `card-in 350ms ${EASE_OUT} ${index * 40}ms both`,
-      }}
+    <li
+      className="group relative flex items-center transition-colors duration-150 hover:bg-secondary/50"
     >
-      <div
-        className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: favorite.accentColor }}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate font-sans text-sm font-medium text-foreground">
-          {favorite.lessonTitle}
-        </span>
-        <span className="truncate font-sans text-xs text-muted-foreground">
-          {favorite.courseTitle}
-        </span>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-3">
-        {favorite.completed ? (
-          <CheckCircle className="size-3.5 text-primary" weight="fill" />
-        ) : percentage > 0 ? (
-          <div className="flex items-center gap-1.5">
-            <div className="w-12">
-              <ProgressBar value={percentage} />
-            </div>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {percentage}%
-            </span>
-          </div>
-        ) : null}
-
-        <span className="flex w-10 items-center justify-end gap-1 font-mono text-[11px] text-muted-foreground">
-          {favorite.duration > 0 && (
-            <>
-              <Clock className="size-3 shrink-0" />
-              {favorite.duration}m
-            </>
-          )}
-        </span>
-
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove(favorite.lessonId);
-          }}
-          className="rounded-md p-1 text-red-500 opacity-0 transition-all hover:bg-red-500/10 group-hover:opacity-100"
+      <Link
+        to={`/course/${favorite.courseId}?lesson=${favorite.lessonId}&from=/bookmarks`}
+        className="flex min-w-0 flex-1 items-center gap-4 py-3 pr-14 pl-3"
+      >
+        <CourseCover
+          title={favorite.courseTitle}
+          accentColor={favorite.accentColor}
+          showTitle={false}
+          className="aspect-[16/10] w-20 shrink-0 rounded-lg"
         >
-          <Heart className="size-3.5" weight="fill" />
-        </button>
-      </div>
-    </Link>
+          <span className="absolute inset-0 flex items-center justify-center text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            <Play weight="fill" className="size-4 drop-shadow" />
+          </span>
+        </CourseCover>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate font-sans text-sm font-medium text-foreground" title={favorite.lessonTitle}>
+            {favorite.lessonTitle}
+          </span>
+          <span className="truncate font-sans text-xs text-muted-foreground" title={favorite.courseTitle}>
+            {favorite.courseTitle}
+          </span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 font-sans text-xs text-muted-foreground tabular-nums">
+          {favorite.completed ? (
+            <>
+              <span className="flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Check weight="bold" className="size-2.5" />
+              </span>
+              Watched
+            </>
+          ) : percentage > 0 ? (
+            <>
+              <ProgressRing value={percentage} size={16} stroke={2.25} label="Watched" />
+              {Math.max(1, Math.round(favorite.duration * (1 - progress)))} min left
+            </>
+          ) : (
+            favorite.duration > 0 && `${favorite.duration} min`
+          )}
+        </div>
+      </Link>
+
+      <button
+        onClick={() => onRemove(favorite.lessonId)}
+        aria-label={`Remove "${favorite.lessonTitle}" from saved lessons`}
+        title="Remove from saved"
+        className={cn(
+          "absolute right-3 flex size-8 items-center justify-center rounded-full text-destructive transition-[opacity,background-color] duration-150 hover:bg-destructive/10",
+          "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+        )}
+      >
+        <Heart className="size-4" weight="fill" />
+      </button>
+    </li>
   );
 }

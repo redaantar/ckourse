@@ -14,8 +14,27 @@ import type {
   SearchResult,
 } from "@/types";
 
+// The sidebar and the page under it often ask for the same data in the same tick;
+// calls made while an identical one is in flight share its result.
+const inFlight = new Map<string, Promise<unknown>>();
+function shared<T>(command: string): Promise<T> {
+  let p = inFlight.get(command) as Promise<T> | undefined;
+  if (!p) {
+    p = invoke<T>(command).finally(() => inFlight.delete(command));
+    inFlight.set(command, p);
+  }
+  return p;
+}
+
 export async function getCourses(): Promise<Course[]> {
-  return invoke<Course[]>("get_courses");
+  return shared<Course[]>("get_courses");
+}
+
+/** Courses you've opened, most recently watched first. */
+export function byLastWatched(courses: Course[]): Course[] {
+  return courses
+    .filter((c) => c.lastWatched)
+    .sort((a, b) => new Date(b.lastWatched!).getTime() - new Date(a.lastWatched!).getTime());
 }
 
 export async function getCourse(courseId: number): Promise<Course | null> {
@@ -125,7 +144,7 @@ export async function getBookmarkedCourses(): Promise<Course[]> {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  return invoke<DashboardStats>("get_dashboard_stats");
+  return shared<DashboardStats>("get_dashboard_stats");
 }
 
 export async function getProgressData(): Promise<ProgressData> {

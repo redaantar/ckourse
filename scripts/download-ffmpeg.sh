@@ -10,6 +10,8 @@ set -euo pipefail
 
 DEST="src-tauri/binaries"
 mkdir -p "$DEST"
+# Start clean so binaries from an earlier run (possibly the wrong arch) never linger.
+rm -f "$DEST"/ffmpeg-* "$DEST"/ffprobe-*
 
 NM="node_modules"
 CI_MODE="${1:-}"

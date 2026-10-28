@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  PaperPlaneTiltIcon as PaperPlaneTilt,
-  XIcon as X,
   TextBolderIcon as TextBolder,
   TextItalicIcon as TextItalic,
   TextUnderlineIcon as TextUnderline,
@@ -322,8 +320,8 @@ export function NoteEditor({
   ];
 
   return (
-    <div className={cn("rounded-lg border border-border bg-card", className)}>
-      <div className="flex items-center gap-0.5 border-b border-border/50 px-2 py-1.5">
+    <div className={cn("rounded-2xl border border-border bg-card shadow-card transition-colors focus-within:border-input", className)}>
+      <div className="flex flex-wrap items-center gap-0.5 px-2 pt-2">
         {toolbarButtons.map(({ command, icon: Icon, label }) => (
           <button
             key={command}
@@ -331,9 +329,15 @@ export function NoteEditor({
               e.preventDefault();
               execFormat(command);
             }}
+            onClick={(e) => {
+              // Keyboard activation (Enter/Space) fires click without mousedown
+              if (e.detail === 0) execFormat(command);
+            }}
             title={label}
+            aria-label={label}
+            aria-pressed={activeFormats.has(command)}
             className={cn(
-              "rounded p-1 transition-colors",
+              "rounded-md p-1.5 transition-colors",
               activeFormats.has(command)
                 ? "bg-secondary text-foreground"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -343,8 +347,8 @@ export function NoteEditor({
           </button>
         ))}
 
-        <span className="ml-2 font-mono text-[10px] text-muted-foreground/40">
-          Type <span className="text-muted-foreground/60">@</span> to tag time
+        <span className="ml-auto pr-1 font-sans text-xs text-muted-foreground">
+          Type <kbd className="rounded bg-secondary px-1 font-sans font-semibold text-foreground">@</kbd> to link a moment
         </span>
       </div>
 
@@ -354,14 +358,17 @@ export function NoteEditor({
           contentEditable
           onInput={handleInput}
           onKeyDown={handleKeyDown}
-          data-placeholder="Write a note..."
-          className="note-editable min-h-18 w-full px-3 pt-2.5 pb-2 font-sans text-xs leading-relaxed text-foreground focus:outline-none"
+          data-placeholder="What stood out?"
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Note"
+          className="note-editable min-h-20 w-full px-4 pt-2.5 pb-2 font-sans text-sm leading-relaxed text-foreground focus:outline-none"
         />
 
         {menu && suggestions.length > 0 && (
           <div
             ref={menuRef}
-            className="absolute z-10 min-w-45 overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+            className="absolute z-10 min-w-48 overflow-hidden rounded-xl bg-popover p-1 shadow-pop"
             style={{
               left: menu.x,
               top: menu.y,
@@ -378,17 +385,17 @@ export function NoteEditor({
                   replaceAtQuery(s.seconds);
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
                   i === selectedIndex
                     ? "bg-secondary"
-                    : "hover:bg-secondary/50"
+                    : "hover:bg-secondary"
                 )}
               >
-                <Clock className="size-3.5 shrink-0 text-primary" />
-                <span className="font-mono text-[11px] font-semibold text-foreground">
+                <Clock className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="font-mono text-xs font-semibold text-foreground tabular-nums">
                   {s.label}
                 </span>
-                <span className="ml-auto font-sans text-[10px] text-muted-foreground">
+                <span className="ml-auto font-sans text-xs text-muted-foreground">
                   {s.description}
                 </span>
               </button>
@@ -397,13 +404,15 @@ export function NoteEditor({
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-1.5 border-t border-border/50 px-3 py-1.5">
+      <div className="flex items-center justify-end gap-1.5 px-3 pb-3">
         {onCancel && (
           <button
             onClick={onCancel}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            aria-label="Cancel"
+            title="Cancel (Esc)"
+            className="h-8 rounded-full px-3 font-sans text-[13px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <X className="size-3.5" />
+            Cancel
           </button>
         )}
         <button
@@ -411,11 +420,14 @@ export function NoteEditor({
             e.preventDefault();
             handleSubmit();
           }}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-sans text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          onClick={(e) => {
+            if (e.detail === 0) handleSubmit();
+          }}
+          title="Save (⌘↵)"
+          className="flex h-8 items-center gap-1.5 rounded-full bg-foreground px-3.5 font-sans text-[13px] font-medium text-background transition-opacity hover:opacity-85"
           style={{ transitionTimingFunction: SNAPPY }}
         >
-          <PaperPlaneTilt className="size-3.5" weight="fill" />
-          Save
+          Save note
         </button>
       </div>
     </div>

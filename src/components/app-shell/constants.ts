@@ -9,15 +9,16 @@ import { EASE } from "@/lib/constants";
 import type { NavItem } from "@/types";
 
 export { EASE };
-export const DUR = "500ms";
+// The sidebar is an object being moved, so it moves like one: a real critically damped spring
+export const DUR = "680ms";
 export const spring = (extra = "") =>
-  `${extra ? extra + " " : ""}${DUR} ${EASE}`.trim();
+  `${extra ? extra + " " : ""}${DUR} var(--spring-smooth)`.trim();
 
 export const navigationItems: NavItem[] = [
-  { icon: SquaresFour, label: "Dashboard", path: "/" },
-  { icon: BookmarkSimple, label: "Bookmarks", path: "/bookmarks" },
-  { icon: ChartBar, label: "Progress", path: "/progress" },
+  { icon: SquaresFour, label: "Home", path: "/" },
+  { icon: BookmarkSimple, label: "Saved", path: "/bookmarks" },
   { icon: Notepad, label: "Notes", path: "/notes" },
+  { icon: ChartBar, label: "Progress", path: "/progress" },
 ];
 
 export const appItems: NavItem[] = [
@@ -25,8 +26,8 @@ export const appItems: NavItem[] = [
 ];
 
 export const routeTitles: Record<string, string> = {
-  "/": "Dashboard",
-  "/bookmarks": "Bookmarks",
+  "/": "Home",
+  "/bookmarks": "Saved",
   "/progress": "Progress",
   "/notes": "Notes",
   "/settings": "Settings",

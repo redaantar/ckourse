@@ -1,64 +1,60 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, type ReactNode, type MouseEvent } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  SquareHalfIcon as SquareHalf,
-  CornersOutIcon as CornersOut,
-  CornersInIcon as CornersIn,
-  CaretRightIcon as CaretRight,
+  SidebarSimpleIcon as SidebarSimple,
+  GearSixIcon as GearSix,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { reportError } from "@/lib/posthog";
 import { useTheme } from "@/hooks/useTheme";
-import { AnimatedThemeToggler } from "@/components/ui/animatedThemeToggle";
 import logoDark from "@/assets/icons/logo-dark.svg";
 import logoLight from "@/assets/icons/logo-light.svg";
-import { spring, navigationItems, appItems } from "./constants";
-import { SquircleClipDefs } from "./SquircleClipDefs";
-import { useBreadcrumbs } from "./useBreadcrumbs";
-import { CourseTitleProvider } from "./CourseTitleContext";
-import { NavSection } from "./NavSection";
+import { spring, navigationItems } from "./constants";
+import { SidebarButton } from "./SidebarButton";
 import { SidebarSearch } from "./SidebarSearch";
+import { LevelBadge, RecentCourses, useSidebarData } from "./SidebarExtras";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
-export function AppShell({ children }: AppShellProps) {
-  return (
-    <CourseTitleProvider>
-      <AppShellInner>{children}</AppShellInner>
-    </CourseTitleProvider>
-  );
+const settingsItem = { icon: GearSix, label: "Settings", path: "/settings" };
+
+// The window's toolbar band, sized so its centre line runs through the traffic lights
+// (pinned by trafficLightPosition in tauri.conf.json, x 18 y 24, which lands them ~22pt down).
+// Our controls centre on the same line; change the two together.
+const TOOLBAR_H = 44;
+
+// The panel has no toolbar, so its top strip moves the window. Only presses on empty
+// space count: anything interactive scrolled under the strip still gets its click.
+const DRAG_STRIP_H = 28;
+const INTERACTIVE =
+  "a, button, input, select, textarea, label, summary, video, [contenteditable], [draggable='true'], [role='button'], [role='link'], [role='tab'], [role='switch'], [role='checkbox'], [role='radio'], [role='slider'], [role='menuitem'], [role='option']";
+
+function dragFromPanelTop(e: MouseEvent<HTMLDivElement>) {
+  if (e.button !== 0 || e.clientY - e.currentTarget.getBoundingClientRect().top > DRAG_STRIP_H) return;
+  const target = e.target as HTMLElement;
+  if (target.closest(INTERACTIVE)) return;
+  // A press on a scrollbar lands on the scroller itself, outside its client area
+  if (e.nativeEvent.offsetX >= target.clientWidth && target.scrollHeight > target.clientHeight) return;
+  e.preventDefault();
+  const win = getCurrentWindow();
+  void (e.detail === 2 ? win.toggleMaximize() : win.startDragging());
 }
 
-function AppShellInner({ children }: AppShellProps) {
+const toolbarButton =
+  "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:pointer-events-none disabled:opacity-35";
+
+/**
+ * Two surfaces: the window canvas (sidebar) and one inset content panel. The panel
+ * floats a few points off the window edge with a rounded corner, so content reads
+ * as a sheet you're working on rather than a region of a grid.
+ */
+export function AppShell({ children }: AppShellProps) {
   const { theme } = useTheme();
-  const breadcrumbs = useBreadcrumbs();
   const logo = theme === "light" ? logoLight : logoDark;
   const [collapsed, setCollapsed] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const toggleFullscreen = useCallback(() => {
-    const promise = document.fullscreenElement
-      ? document.exitFullscreen()
-      : document.documentElement.requestFullscreen();
-    if (promise && typeof promise.catch === "function") {
-      promise.catch((err: unknown) => {
-        const name = err instanceof DOMException ? err.name : undefined;
-        if (name === "AbortError" || name === "NotAllowedError") return;
-        reportError(err, "AppShell.toggleFullscreen", {
-          entering: !document.fullscreenElement,
-        });
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
+  const { recent, stats } = useSidebarData();
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
@@ -71,156 +67,113 @@ function AppShellInner({ children }: AppShellProps) {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  // ⌘\ toggles the sidebar, as in Finder-style Mac apps
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        setCollapsed((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const effectiveCollapsed = isSmallScreen || collapsed;
+  // Collapsed, the rail is exactly the traffic lights plus an equal 18pt margin either side
+  // (they run 18–78pt), so they sit centred on the canvas instead of crowding the panel
+  const sidebarWidth = effectiveCollapsed ? 96 : 236;
+  // Collapsed, the gutter grows so every row narrows to a 32pt square instead of a wide pill
+  const gutter = { paddingInline: effectiveCollapsed ? 32 : 12, transition: `padding ${spring()}` };
 
   return (
-    <div className="flex h-screen flex-col bg-linear-to-b from-background to-sidebar text-foreground">
-      <SquircleClipDefs />
-
-      {/* Drag strip — provides window dragging and clears the traffic lights zone */}
-      <div data-tauri-drag-region className="h-7 w-full shrink-0" />
-
-      <header className="flex h-15 shrink-0 items-center">
+    <div className="flex h-screen bg-sidebar text-foreground">
+      <aside
+        className="flex shrink-0 flex-col will-change-[width]"
+        style={{ width: sidebarWidth, transition: `width ${spring()}` }}
+      >
+        {/* Toolbar band: the traffic lights hold the left end, our controls the right, on one
+            centre line. Collapsed, the band is the lights alone; the logo becomes the toggle. */}
         <div
-          className="flex shrink-0 items-center px-3"
-          style={{
-            width: effectiveCollapsed ? 68 : 240,
-            transition: `width ${spring()}`,
-          }}
+          data-tauri-drag-region
+          className="flex shrink-0 items-center justify-end gap-0.5 px-3"
+          style={{ height: TOOLBAR_H }}
         >
-          {isSmallScreen ? (
-            <div className="flex w-full items-center justify-center">
-              <img src={logo} alt="Ckourse logo" className="h-7" />
-            </div>
-          ) : (
-            <div className={cn(
-              "flex w-full items-center",
-              effectiveCollapsed ? "justify-center" : ""
-            )}>
-              <div
-                className="flex items-center gap-2.5 overflow-hidden"
-                style={{
-                  opacity: effectiveCollapsed ? 0 : 1,
-                  width: effectiveCollapsed ? 0 : 160,
-                  transition: `opacity ${spring()}, width ${spring()}`,
-                }}
-              >
-                <img src={logo} alt="Ckourse logo" className="h-7 shrink-0" />
-                <span className="shrink-0 font-heading text-lg font-bold tracking-wider text-sidebar-foreground">
-                  <span className="text-sidebar-primary">CK</span>OURSE
-                </span>
-              </div>
-              {effectiveCollapsed ? (
-                <button
-                  onClick={() => setCollapsed(false)}
-                  className="group relative flex size-10 shrink-0 items-center justify-center"
-                >
-                  <img
-                    src={logo}
-                    alt="Ckourse logo"
-                    className="h-7 transition-opacity duration-200 group-hover:opacity-0"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    <div className="squircle flex size-10 items-center justify-center bg-sidebar-accent text-sidebar-foreground">
-                      <SquareHalf className="size-4 -scale-x-100" />
-                    </div>
-                  </div>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setCollapsed(true)}
-                  className="squircle ml-auto flex size-9 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                >
-                  <SquareHalf className="size-4" />
-                </button>
-              )}
-            </div>
+          {!effectiveCollapsed && !isSmallScreen && (
+            <button onClick={() => setCollapsed(true)} aria-label="Hide sidebar" title="Hide sidebar (⌘\)" className={toolbarButton}>
+              <SidebarSimple className="size-[18px]" />
+            </button>
           )}
         </div>
 
-        <div data-tauri-drag-region className="flex flex-1 items-center px-6 gap-4">
-          <nav className="flex items-center gap-1.5">
-            {breadcrumbs.map((crumb, i) => {
-              const isLast = i === breadcrumbs.length - 1;
-              return (
-                <div key={i} className="flex items-center gap-1.5">
-                  {i > 0 && (
-                    <CaretRight className="size-3.5 text-muted-foreground/50" />
-                  )}
-                  {crumb.path && !isLast ? (
-                    <Link
-                      to={crumb.path}
-                      className="font-heading text-lg font-bold text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {crumb.label}
-                    </Link>
-                  ) : (
-                    <h1 className="font-heading text-lg font-bold text-foreground">
-                      {crumb.label}
-                    </h1>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
-
-          <div data-tauri-drag-region className="flex-1 self-stretch" />
-
-          <div className="flex items-center gap-2">
-            <AnimatedThemeToggler className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground [&_svg]:size-4" />
-
+        <div className={cn("flex items-center gap-2 px-4 pt-2 pb-5", effectiveCollapsed && "justify-center gap-0 px-0 pt-2")}>
+          {effectiveCollapsed && !isSmallScreen ? (
+            // Collapsed, the logo doubles as the expand control: hovering swaps it for the sidebar icon
             <button
-              onClick={toggleFullscreen}
-              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              onClick={() => setCollapsed(false)}
+              aria-label="Show sidebar"
+              title="Show sidebar (⌘\)"
+              className="group grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
             >
-              {isFullscreen ? <CornersIn className="size-4" /> : <CornersOut className="size-4" />}
+              <img
+                src={logo}
+                alt=""
+                className="col-start-1 row-start-1 h-[22px] transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+              />
+              <SidebarSimple className="col-start-1 row-start-1 size-[18px] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
             </button>
-
-            {/* <div className="mx-1 h-6 w-px bg-border" /> */}
-
-            {/* Profile icon and name — hardcoded, hidden until auth is implemented */}
-            {/* <button className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary">
-              <div className="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                R
-              </div>
-              <span className="font-sans text-sm font-medium text-foreground">
-                Reda
-              </span>
-            </button> */}
-          </div>
+          ) : (
+            <img src={logo} alt="" className="h-[22px] shrink-0" />
+          )}
+          <span
+            className="overflow-hidden whitespace-nowrap font-heading text-[17px] font-semibold text-sidebar-foreground"
+            style={{
+              opacity: effectiveCollapsed ? 0 : 1,
+              maxWidth: effectiveCollapsed ? 0 : 120,
+              transition: `opacity ${spring()}, max-width ${spring()}`,
+            }}
+          >
+            ckourse
+          </span>
         </div>
-      </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside
-          className="flex shrink-0 flex-col will-change-[width]"
-          style={{
-            width: effectiveCollapsed ? 68 : 240,
-            transition: `width ${spring()}`,
-          }}
+        <div style={gutter}>
+          <SidebarSearch collapsed={effectiveCollapsed} />
+        </div>
+
+        <nav
+          aria-label="Main"
+          className={cn(
+            "flex flex-1 flex-col gap-6 pt-5",
+            // Scrolling would clip the rail's hover labels, and the collapsed list is short anyway
+            effectiveCollapsed ? "overflow-visible" : "overflow-y-auto overflow-x-hidden",
+          )}
+          style={gutter}
         >
-          <div className="px-3 pb-1">
-            <SidebarSearch collapsed={effectiveCollapsed} />
-          </div>
+          <ul className="flex flex-col gap-1">
+            {navigationItems.map((item, i) => (
+              <li key={item.path}>
+                <SidebarButton item={item} collapsed={effectiveCollapsed} index={i} />
+              </li>
+            ))}
+          </ul>
+          <RecentCourses courses={recent} collapsed={effectiveCollapsed} />
+        </nav>
 
-          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 pt-4">
-            <NavSection label="Navigation" collapsed={effectiveCollapsed} items={navigationItems} />
-            <div className="mx-3 my-3 border-t border-sidebar-border/50" />
-            <NavSection label="App" collapsed={effectiveCollapsed} items={appItems} />
-          </nav>
+        <div className="flex shrink-0 flex-col gap-1.5 pt-2 pb-3" style={gutter}>
+          <SidebarButton item={settingsItem} collapsed={effectiveCollapsed} index={0} />
+          <div className="mx-1 my-1.5 h-px bg-sidebar-border" />
+          <LevelBadge stats={stats} collapsed={effectiveCollapsed} />
+        </div>
+      </aside>
 
-          <div className="mx-3 mb-4 mt-auto h-px bg-linear-to-r from-transparent via-primary/20 to-transparent" />
-        </aside>
-
-        <main
-          className="flex-1 overflow-y-auto rounded-tl-2xl bg-background px-6 py-8 [scrollbar-gutter:stable]"
-          style={{
-            backgroundImage:
-              "radial-gradient(ellipse 80% 60% at 10% 0%, var(--gradient-spot) 0%, transparent 70%)",
-          }}
+      <div className="flex min-w-0 flex-1 flex-col py-2 pr-2">
+        <div
+          onMouseDown={dragFromPanelTop}
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-background shadow-[0_0_0_1px_var(--sidebar-border)]"
         >
-          {children}
-        </main>
+          <main className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">{children}</main>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PlayIcon as Play,
   CheckCircleIcon as CheckCircle,
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { EASE } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
 import type { Section, Lesson } from "@/types";
+import { ProgressRing } from "@/components/ui/progress-ring";
 
 interface SectionAccordionProps {
   section: Section;
@@ -25,6 +26,11 @@ export function SectionAccordion({
   onToggleComplete,
   onToggleFavorite,
 }: SectionAccordionProps) {
+  // Rows rendered after first paint are lessons completed during this visit
+  const settled = useRef(false);
+  useEffect(() => {
+    settled.current = true;
+  }, []);
   const completedCount = section.lessons.filter((l) => l.completed).length;
   const allComplete =
     completedCount === section.lessons.length && section.lessons.length > 0;
@@ -39,121 +45,127 @@ export function SectionAccordion({
     0,
   );
 
+  const sectionPct = section.lessons.length ? (completedCount / section.lessons.length) * 100 : 0;
+
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div className="py-0.5">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary"
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-secondary/70"
       >
+        {allComplete ? (
+          <CheckCircle className="size-4 shrink-0 text-primary" weight="fill" aria-label="Section complete" />
+        ) : (
+          <ProgressRing value={sectionPct} size={16} stroke={2.25} />
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-sans text-[13px] font-semibold text-foreground">{section.title}</span>
+          <span className="font-sans text-xs text-muted-foreground tabular-nums">
+            {completedCount} of {section.lessons.length}
+            {sectionDuration > 0 && <> · {formatDuration(sectionDuration)}</>}
+          </span>
+        </div>
+
         <CaretDown
-          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+          className="size-3.5 shrink-0 text-muted-foreground"
           style={{
             transform: open ? "rotate(0deg)" : "rotate(-90deg)",
             transition: `transform 300ms ${EASE}`,
           }}
         />
-
-        <div className="flex flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span className="font-heading text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              {section.title}
-            </span>
-            {allComplete && (
-              <CheckCircle className="ml-auto size-3.5 text-primary" weight="fill" />
-            )}
-          </div>
-          <span className="font-mono text-[10px] text-muted-foreground/60">
-            {section.lessons.length} {section.lessons.length === 1 ? "lesson" : "lessons"}
-            {sectionDuration > 0 && <> · {formatDuration(sectionDuration)}</>}
-          </span>
-        </div>
       </button>
 
       <div
+        inert={!open}
+        className="grid"
         style={{
-          maxHeight: open ? section.lessons.length * 52 + 8 : 0,
+          gridTemplateRows: open ? "1fr" : "0fr",
           opacity: open ? 1 : 0,
-          transition: `max-height 350ms ${EASE}, opacity 250ms ${EASE}`,
+          transition: `grid-template-rows 350ms ${EASE}, opacity 250ms ${EASE}`,
         }}
-        className="overflow-hidden"
       >
-        <div className="flex flex-col gap-px px-2 pt-1 pb-2">
-          {section.lessons.map((lesson, index) => {
-            const isActive = lesson.id === activeLessonId;
+        <div className="overflow-hidden">
+          <div className="flex flex-col gap-px pt-0.5 pb-2">
+            {section.lessons.map((lesson, index) => {
+              const isActive = lesson.id === activeLessonId;
 
-            return (
-              <button
-                key={lesson.id}
-                onClick={() => onSelectLesson(lesson)}
-                className={cn(
-                  "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-secondary",
-                  isActive && "bg-primary/5",
-                )}
-                style={{
-                  opacity: open ? 1 : 0,
-                  transform: open ? "translateX(0)" : "translateX(-6px)",
-                  transition: `opacity 300ms ${EASE} ${index * 30}ms, transform 300ms ${EASE} ${index * 30}ms`,
-                }}
-              >
+              return (
                 <div
-                  className="shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleComplete(lesson.id);
-                  }}
-                >
-                  {lesson.completed ? (
-                    <CheckCircle
-                      className="size-4 text-primary"
-                      weight="fill"
-                    />
-                  ) : isActive ? (
-                    <div className="flex size-4 items-center justify-center">
-                      <Play className="size-3.5 text-primary" weight="fill" />
-                    </div>
-                  ) : (
-                    <LessonProgress
-                      progress={lesson.duration > 0 ? lesson.lastPosition / (lesson.duration * 60) : 0}
-                    />
-                  )}
-                </div>
-
-                <span
+                  key={lesson.id}
                   className={cn(
-                    "flex-1 font-sans text-xs",
-                    lesson.completed
-                      ? "text-muted-foreground"
-                      : "text-foreground",
-                    isActive && "font-medium text-primary",
+                    "group flex items-center gap-1 rounded-xl pr-2.5 pl-1.5 transition-colors",
+                    isActive ? "bg-secondary" : "hover:bg-secondary/60",
                   )}
-                >
-                  {lesson.title}
-                </span>
-
-                <span
-                  className="relative flex shrink-0 items-center justify-end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite(lesson.id);
+                  style={{
+                    opacity: open ? 1 : 0,
+                    transform: open ? "translateX(0)" : "translateX(-6px)",
+                    transition: `opacity 300ms ${EASE} ${index * 30}ms, transform 300ms ${EASE} ${index * 30}ms, background-color 150ms`,
                   }}
                 >
-                  {lesson.favorited ? (
-                    <Heart className="size-3 text-red-500 transition-colors hover:text-red-400" weight="fill" />
-                  ) : (
-                    <>
-                      <span className="font-mono text-[11px] text-muted-foreground transition-opacity group-hover:opacity-0">
-                        {lesson.duration > 0 ? `${lesson.duration}m` : ""}
-                      </span>
-                      <Heart
-                        className="absolute size-3 text-muted-foreground/40 opacity-0 transition-all group-hover:opacity-100 hover:!text-red-400"
-                        weight="regular"
+                  <button
+                    onClick={() => onToggleComplete(lesson.id)}
+                    aria-label={lesson.completed ? `Mark "${lesson.title}" incomplete` : `Mark "${lesson.title}" complete`}
+                    aria-pressed={lesson.completed}
+                    title={lesson.completed ? "Mark incomplete" : "Mark complete"}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-md"
+                  >
+                    {lesson.completed ? (
+                      <CompletionCheck animate={settled.current} />
+                    ) : isActive ? (
+                      <div className="flex size-4 items-center justify-center">
+                        <Play className="size-3.5 text-primary" weight="fill" />
+                      </div>
+                    ) : (
+                      <LessonProgress
+                        progress={lesson.duration > 0 ? lesson.lastPosition / (lesson.duration * 60) : 0}
                       />
-                    </>
-                  )}
-                </span>
-              </button>
-            );
-          })}
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => onSelectLesson(lesson)}
+                    aria-current={isActive ? "true" : undefined}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-md py-2 pl-1 text-left"
+                  >
+                    <span
+                      className={cn(
+                        "flex-1 font-sans text-[13px] leading-snug",
+                        isActive
+                          ? "font-medium text-foreground"
+                          : lesson.completed
+                            ? "text-muted-foreground"
+                            : "text-foreground",
+                      )}
+                    >
+                      {lesson.title}
+                    </span>
+                    {!lesson.favorited && lesson.duration > 0 && (
+                      <span className="shrink-0 font-sans text-xs text-muted-foreground tabular-nums transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+                        {formatDuration(lesson.duration)}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => onToggleFavorite(lesson.id)}
+                    aria-label={lesson.favorited ? `Remove "${lesson.title}" from favorites` : `Add "${lesson.title}" to favorites`}
+                    aria-pressed={lesson.favorited}
+                    title={lesson.favorited ? "Remove from favorites" : "Add to favorites"}
+                    className={cn(
+                      "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-md transition-[opacity,color]",
+                      lesson.favorited
+                        ? "text-destructive hover:text-destructive/80"
+                        : "-ml-6 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-destructive",
+                    )}
+                  >
+                    <Heart className="size-3.5" weight={lesson.favorited ? "fill" : "regular"} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -169,7 +181,7 @@ function LessonProgress({ progress }: { progress: number }) {
 
   return (
     <div className="relative flex size-4 items-center justify-center">
-      <svg className="absolute size-4" viewBox="0 0 16 16">
+      <svg className="absolute size-4" viewBox="0 0 16 16" aria-hidden="true">
         <circle
           cx="8"
           cy="8"
@@ -177,7 +189,7 @@ function LessonProgress({ progress }: { progress: number }) {
           fill="none"
           className={cn(
             "transition-colors",
-            hasProgress ? "stroke-primary/15" : "stroke-border group-hover:stroke-muted-foreground",
+            hasProgress ? "stroke-primary/20" : "stroke-input group-hover:stroke-muted-foreground",
           )}
           strokeWidth="1.5"
         />
@@ -197,5 +209,19 @@ function LessonProgress({ progress }: { progress: number }) {
         )}
       </svg>
     </div>
+  );
+}
+
+/**
+ * The lesson checkmark. Lessons that were already done render still; one finished
+ * while you watch lands with a spring, the single moment the app says "nice".
+ */
+function CompletionCheck({ animate }: { animate: boolean }) {
+  const [earnedNow] = useState(animate);
+  return (
+    <CheckCircle
+      className={cn("size-4 text-primary", earnedNow && "check-pop")}
+      weight="fill"
+    />
   );
 }

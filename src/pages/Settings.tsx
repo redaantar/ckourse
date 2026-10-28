@@ -3,30 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { usePageVisible } from "@/hooks/usePageVisible";
 import { useSettings, AUTOPLAY_DELAY_MAX } from "@/hooks/useSettings";
 import {
-  GearSixIcon as GearSix,
-  PlayIcon as Play,
   DatabaseIcon as Database,
-  FolderIcon as Folder,
-  NotepadIcon as Notepad,
-  BookmarkSimpleIcon as BookmarkSimple,
-  HeartIcon as Heart,
-  SpinnerGapIcon as SpinnerGap,
-  StackIcon as Stack,
-  MonitorPlayIcon as MonitorPlay,
   ArrowsClockwiseIcon as ArrowsClockwise,
-  FastForwardIcon as FastForward,
-  SpeakerHighIcon as SpeakerHigh,
-  SkipForwardIcon as SkipForward,
-  TimerIcon as Timer,
-  TrashIcon as Trash,
   WarningCircleIcon as WarningCircle,
   XIcon as X,
   CloudIcon as Cloud,
   KeyIcon as Key,
-  LinkSimpleIcon as Link,
-  LinkBreakIcon as LinkBreak,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { LibraryStats } from "@/types";
 import { getLibraryStats, deleteAllData } from "@/lib/store";
 import {
@@ -40,94 +25,29 @@ import {
 import { EASE_OUT } from "@/lib/constants";
 import { DriveSetupGuide } from "@/components/DriveSetupGuide";
 import {
-  SectionCard,
+  SettingsGroup,
   SettingRow,
+  SettingPanel,
   CredInput,
+  Toggle,
+  Select,
+  Slider,
+  type SelectOption,
 } from "@/components/settings/SettingsPrimitives";
 import { ServersSection } from "@/components/settings/ServersSection";
 import { useUpdater } from "@/hooks/useUpdater";
 import { getVersion } from "@tauri-apps/api/app";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { AppearanceSection } from "@/components/settings/AppearanceSection";
 
-interface ToggleProps {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}
-
-function Toggle({ checked, onChange }: ToggleProps) {
+/** One figure in the library summary: the number carries it, the label whispers. */
+function Figure({ label, value }: { label: string; value: number }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200",
-        checked ? "bg-primary" : "bg-border",
-      )}
-    >
-      <span
-        className={cn(
-          "block size-4.5 rounded-full bg-background shadow-sm transition-transform duration-200",
-          checked ? "translate-x-[22px]" : "translate-x-[2px]",
-        )}
-      />
-    </button>
-  );
-}
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface SelectProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: SelectOption[];
-}
-
-function Select({ value, onChange, options }: SelectProps) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "appearance-none rounded-lg border border-border bg-secondary px-3 py-1.5",
-          "font-sans text-sm text-foreground outline-none",
-          "cursor-pointer transition-colors hover:border-muted-foreground/30",
-          "pr-8",
-        )}
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-      <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
-        <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+    <div className="min-w-0">
+      <div className="font-sans text-[22px] leading-none font-semibold text-foreground tabular-nums">
+        {value.toLocaleString()}
       </div>
-    </div>
-  );
-}
-
-interface StatChipProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-}
-
-function StatChip({ icon, label, value }: StatChipProps) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-lg bg-secondary/50 px-3 py-2.5">
-      <div className="text-muted-foreground">{icon}</div>
-      <div>
-        <div className="font-mono text-sm font-bold text-foreground">{value}</div>
-        <div className="font-sans text-[11px] text-muted-foreground">{label}</div>
-      </div>
+      <div className="mt-1.5 font-sans text-xs text-muted-foreground">{label}</div>
     </div>
   );
 }
@@ -144,84 +64,81 @@ function DeleteConfirmDialog({
   const [input, setInput] = useState("");
   const matches = input.toLowerCase().trim() === CONFIRM_PHRASE;
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="delete-all-title"
+    >
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onCancel} />
       <div
-        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-        onClick={onCancel}
-      />
-      <div
-        className="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
+        className="relative w-full max-w-md rounded-2xl bg-popover p-6 shadow-pop"
         style={{ animation: `card-in 250ms ${EASE_OUT} both` }}
       >
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onCancel}
-          className="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
+          aria-label="Close"
+          className="absolute top-3 right-3"
         >
           <X className="size-4" />
-        </button>
+        </Button>
 
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/15">
-            <WarningCircle className="size-5 text-destructive" weight="bold" />
-          </div>
-          <div>
-            <h3 className="font-heading text-base font-bold text-foreground">
-              Delete all data
-            </h3>
-            <p className="font-sans text-xs text-muted-foreground">
-              This action cannot be undone
-            </p>
-          </div>
+        <div className="mb-4 flex size-11 items-center justify-center rounded-full bg-destructive/12">
+          <WarningCircle className="size-6 text-destructive" weight="fill" />
         </div>
-
-        <p className="mb-4 font-sans text-sm text-muted-foreground">
-          This will permanently delete all your courses, progress, notes, bookmarks,
-          favorites, and settings. Your original course files on disk will not be affected.
+        <h3 id="delete-all-title" className="font-heading text-lg font-semibold text-foreground">
+          Erase everything in Ckourse?
+        </h3>
+        <p className="mt-2 mb-5 font-sans text-sm text-muted-foreground">
+          Every course, all progress, notes, saved courses, favorites and settings are removed for
+          good. Your video files on disk stay exactly where they are.
         </p>
 
         <div className="mb-4">
-          <label className="mb-1.5 block font-sans text-xs font-medium text-muted-foreground">
-            Type <span className="font-mono font-bold text-foreground">{CONFIRM_PHRASE}</span> to confirm
+          <label
+            htmlFor="delete-confirm"
+            className="mb-1.5 block font-sans text-xs font-medium text-muted-foreground"
+          >
+            Type <span className="font-semibold text-foreground">{CONFIRM_PHRASE}</span> to
+            confirm
           </label>
           <input
+            id="delete-confirm"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={CONFIRM_PHRASE}
             autoFocus
             className={cn(
-              "w-full rounded-lg border bg-secondary px-3 py-2",
-              "font-mono text-sm text-foreground placeholder:text-muted-foreground/40",
-              "outline-none transition-colors",
-              matches ? "border-destructive" : "border-border",
+              "w-full rounded-lg border bg-card px-3 py-2",
+              "font-sans text-sm text-foreground placeholder:text-muted-foreground",
+              "outline-none transition-colors focus-visible:border-ring",
+              matches ? "border-destructive" : "border-input",
             )}
             onKeyDown={(e) => {
               if (e.key === "Enter" && matches) onConfirm();
-              if (e.key === "Escape") onCancel();
             }}
           />
         </div>
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
+          <Button variant="ghost" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={!matches}
-            className={cn(
-              "rounded-lg px-4 py-2 font-sans text-sm font-semibold transition-colors",
-              matches
-                ? "bg-destructive text-white hover:bg-destructive/90"
-                : "cursor-not-allowed bg-secondary text-muted-foreground/40",
-            )}
-          >
-            Delete everything
-          </button>
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={!matches}>
+            Erase everything
+          </Button>
         </div>
       </div>
     </div>
@@ -249,12 +166,14 @@ interface SettingsProps {
   className?: string;
 }
 
-function UpdatesSection({ index }: { index: number }) {
+function UpdatesSection() {
   const updater = useUpdater();
   const [appVersion, setAppVersion] = useState<string>("");
 
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(""));
   }, []);
 
   const isChecking = updater.status === "checking";
@@ -274,53 +193,54 @@ function UpdatesSection({ index }: { index: number }) {
     else updater.check();
   };
 
-  let description = appVersion ? `Current version v${appVersion}` : "Check for new versions";
-  if (updater.status === "up-to-date") description = `You're on the latest version (v${appVersion})`;
+  let description = "Check for new versions";
+  if (updater.status === "up-to-date")
+    description = `You're on the latest version (v${appVersion})`;
   else if (updater.status === "available") description = `Version ${updater.version} is available`;
   else if (updater.status === "error") description = updater.error ?? "Update check failed";
 
   return (
-    <SectionCard
-      title="Updates"
-      icon={<ArrowsClockwise className="size-4 text-info" weight="bold" />}
-      index={index}
-    >
+    <SettingsGroup title="About">
       <SettingRow
-        icon={<ArrowsClockwise className={cn("size-4", isChecking && "animate-spin")} />}
-        label="App updates"
+        icon={<ArrowsClockwise className={cn(isChecking && "animate-spin")} />}
+        label={appVersion ? `Ckourse ${appVersion}` : "Ckourse"}
         description={description}
       >
-        <button
+        <Button
+          size="sm"
           onClick={onClick}
           disabled={isChecking || isDownloading}
-          className={cn(
-            "shrink-0 rounded-lg px-4 py-2",
-            "font-sans text-sm font-semibold transition-colors",
-            hasUpdate
-              ? "bg-primary text-primary-foreground hover:opacity-90"
-              : "border border-border bg-secondary text-foreground hover:bg-secondary/70",
-            (isChecking || isDownloading) && "cursor-not-allowed opacity-60",
-          )}
+          variant={hasUpdate ? "default" : "outline"}
         >
           {buttonLabel}
-        </button>
+        </Button>
       </SettingRow>
-      {isDownloading && (
-        <div className="px-2 pb-2">
-          <div className="h-1 w-full overflow-hidden rounded-full bg-secondary">
+      {(isDownloading || (updater.status === "available" && updater.notes)) && (
+        <SettingPanel>
+          {isDownloading && (
             <div
-              className="h-full bg-primary transition-[width] duration-200"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-        </div>
+              role="progressbar"
+              aria-label="Download progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent}
+              className="h-1 w-full overflow-hidden rounded-full bg-accent"
+              title={`${percent}%`}
+            >
+              <div
+                className="h-full bg-primary transition-[width] duration-200"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          )}
+          {updater.status === "available" && updater.notes && (
+            <div className="max-h-32 overflow-y-auto rounded-lg bg-secondary px-3 py-2 font-sans text-xs whitespace-pre-wrap text-muted-foreground select-text">
+              {updater.notes}
+            </div>
+          )}
+        </SettingPanel>
       )}
-      {updater.status === "available" && updater.notes && (
-        <div className="mx-2 mb-2 max-h-32 overflow-y-auto rounded-lg bg-secondary/50 px-3 py-2 font-sans text-xs whitespace-pre-wrap text-muted-foreground">
-          {updater.notes}
-        </div>
-      )}
-    </SectionCard>
+    </SettingsGroup>
   );
 }
 
@@ -330,7 +250,7 @@ function errMsg(e: unknown): string {
   return String(e);
 }
 
-function GoogleDriveSection({ index }: { index: number }) {
+function GoogleDriveSection() {
   const [credsSet, setCredsSet] = useState(false);
   const [connected, setConnected] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -413,22 +333,95 @@ function GoogleDriveSection({ index }: { index: number }) {
       setClientSecret("");
     });
 
-  const showForm = !credsSet || editing;
+  const closeForm = () => {
+    setEditing(false);
+    setError(null);
+  };
+
+  let status = "Not set up";
+  if (credsSet) {
+    if (connecting) status = "Check your browser…";
+    else status = connected ? "Connected" : "Not connected — connect to sign in";
+  }
 
   return (
-    <SectionCard
+    <SettingsGroup
       title="Google Drive"
-      icon={<Cloud className="size-4 text-info" weight="bold" />}
-      index={index}
+      description="Stream courses straight from a Drive folder, nothing downloaded."
+      footer="Uses your own Google Cloud credentials with read-only access, kept in your system keychain."
     >
-      <p className="px-2 pb-2 font-sans text-xs text-muted-foreground">
-        Stream courses from a Google Drive folder. Uses your own Google Cloud OAuth
-        credentials (drive.readonly), stored securely in your system keychain.
-      </p>
+      <SettingRow
+        icon={<Cloud />}
+        label="Google Drive"
+        description={
+          <span className="flex items-center gap-1.5" role="status">
+            {credsSet && (
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  connected ? "bg-success" : "bg-input",
+                )}
+                aria-hidden
+              />
+            )}
+            {status}
+          </span>
+        }
+      >
+        {!credsSet ? (
+          !editing && (
+            <Button size="sm" onClick={() => setEditing(true)}>
+              Set up
+            </Button>
+          )
+        ) : connected ? (
+          <Button variant="outline" size="sm" onClick={() => run(driveDisconnect)} disabled={busy}>
+            Disconnect
+          </Button>
+        ) : connecting ? (
+          <Button variant="outline" size="sm" onClick={cancelConnect}>
+            Cancel
+          </Button>
+        ) : (
+          <Button size="sm" onClick={connect} disabled={busy}>
+            Connect
+          </Button>
+        )}
+      </SettingRow>
 
-      {showForm ? (
-        <div className="flex flex-col gap-3 py-1">
-          <DriveSetupGuide />
+      {credsSet && !editing && (
+        <SettingRow
+          icon={<Key />}
+          label="Credentials"
+          description="Client ID, secret and API key"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditing(true)}
+            disabled={busy || connecting}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="destructive-outline"
+            size="sm"
+            onClick={() => run(driveClearCredentials)}
+            disabled={busy || connecting}
+          >
+            Clear
+          </Button>
+        </SettingRow>
+      )}
+
+      {editing && (
+        <SettingPanel>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-sans text-sm text-muted-foreground">
+              Paste the three values from Google Cloud.
+            </p>
+            <DriveSetupGuide />
+          </div>
           <CredInput
             label="OAuth Client ID (Desktop app)"
             value={clientId}
@@ -448,104 +441,31 @@ function GoogleDriveSection({ index }: { index: number }) {
             onChange={setApiKey}
             placeholder="AIza…"
           />
-          <div className="flex justify-end gap-2 px-2">
-            {editing && (
-              <button
-                onClick={() => {
-                  setEditing(false);
-                  setError(null);
-                }}
-                className="rounded-lg px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                Cancel
-              </button>
-            )}
-            <button
-              onClick={saveCreds}
-              disabled={busy}
-              className={cn(
-                "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
-                "transition-colors hover:bg-primary/90 disabled:opacity-50",
-              )}
-            >
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={closeForm}>
+              Cancel
+            </Button>
+            <Button onClick={saveCreds} disabled={busy}>
               Save credentials
-            </button>
+            </Button>
           </div>
-        </div>
-      ) : (
-        <>
-          <SettingRow
-            icon={<Key className="size-4" />}
-            label="Credentials"
-            description="Stored in your system keychain"
-          >
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setEditing(true)}
-                disabled={busy || connecting}
-                className="rounded-lg border border-border px-3 py-1.5 font-sans text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => run(driveClearCredentials)}
-                disabled={busy || connecting}
-                className="rounded-lg border border-destructive/30 px-3 py-1.5 font-sans text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-              >
-                Clear
-              </button>
-            </div>
-          </SettingRow>
-
-          <SettingRow
-            icon={connected ? <Link className="size-4" /> : <LinkBreak className="size-4" />}
-            label={connected ? "Connected" : "Not connected"}
-            description={
-              connected
-                ? "Your Google account is linked"
-                : "Connect to sign in (opens your browser)"
-            }
-          >
-            {connected ? (
-              <button
-                onClick={() => run(driveDisconnect)}
-                disabled={busy}
-                className="rounded-lg border border-border px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-              >
-                Disconnect
-              </button>
-            ) : connecting ? (
-              <div className="flex items-center gap-2">
-                <span className="font-sans text-sm text-muted-foreground">
-                  Check your browser…
-                </span>
-                <button
-                  onClick={cancelConnect}
-                  className="rounded-lg border border-border px-3 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={connect}
-                disabled={busy}
-                className={cn(
-                  "rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
-                  "transition-colors hover:bg-primary/90 disabled:opacity-50",
-                )}
-              >
-                Connect
-              </button>
-            )}
-          </SettingRow>
-        </>
+        </SettingPanel>
       )}
 
       {error && (
-        <p className="px-2 pt-1 font-sans text-xs text-destructive">{error}</p>
+        <SettingPanel>
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2"
+          >
+            <WarningCircle className="mt-px size-4 shrink-0 text-destructive" weight="fill" />
+            <p className="min-w-0 whitespace-pre-wrap font-sans text-xs text-destructive select-text">
+              {error}
+            </p>
+          </div>
+        </SettingPanel>
       )}
-    </SectionCard>
+    </SettingsGroup>
   );
 }
 
@@ -574,113 +494,75 @@ export function Settings({ className }: SettingsProps) {
   }, [navigate]);
 
   if (loading) {
-    return (
-      <div className={cn("flex h-full items-center justify-center", className)}>
-        <SpinnerGap className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <div className={cn("min-h-[60vh]", className)} aria-busy="true" />;
   }
 
-  return (
-    <div className={cn("mx-auto max-w-3xl px-6 py-8", className)}>
-      <div
-        className="mb-8 flex items-center gap-3"
-        style={{ animation: `card-in 350ms ${EASE_OUT} both` }}
-      >
-        <div className="squircle flex size-10 items-center justify-center bg-primary/15">
-          <GearSix className="size-5 text-primary" weight="bold" />
-        </div>
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-foreground">Settings</h2>
-          <p className="font-sans text-sm text-muted-foreground">
-            Configure your learning experience
-          </p>
-        </div>
-      </div>
+  const delay = settings.autoplay_delay_secs;
+  const delayText = delay === 0 ? "Instant" : `${delay}s`;
 
-      <div className="flex flex-col gap-4">
-        <SectionCard
-          title="Playback"
-          icon={<Play className="size-4 text-primary" weight="bold" />}
-          index={0}
-        >
+  return (
+    <div className={cn("mx-auto w-full max-w-3xl px-6 pt-12 pb-20 lg:px-10", className)}>
+      <div className="flex flex-col gap-10">
+        <header>
+          <h1 className="font-heading text-[34px] leading-tight font-semibold text-foreground">Settings</h1>
+          <p className="mt-1 font-sans text-[15px] text-muted-foreground">
+            Make Ckourse fit the way you learn.
+          </p>
+        </header>
+
+        <AppearanceSection />
+
+        <SettingsGroup title="Playback" description="Defaults for every lesson you open.">
           <SettingRow
-            icon={<SkipForward className="size-4" />}
-            label="Autoplay next lesson"
-            description="Automatically play the next lesson when one finishes"
+            label="Play the next lesson automatically"
+            description="When a lesson ends, the next one starts on its own"
           >
             <Toggle
+              label="Play the next lesson automatically"
               checked={settings.autoplay_next}
               onChange={(v) => update("autoplay_next", String(v))}
             />
           </SettingRow>
           {settings.autoplay_next && (
-            <SettingRow
-              icon={<Timer className="size-4" />}
-              label="Autoplay delay"
-              description="How long to wait before the next lesson starts"
-            >
-              <div className="flex items-center gap-2.5">
-                <input
-                  type="range"
-                  min={0}
-                  max={AUTOPLAY_DELAY_MAX}
-                  step={1}
-                  value={settings.autoplay_delay_secs}
-                  onChange={(e) => update("autoplay_delay_secs", e.target.value)}
-                  className="h-1.5 w-24 cursor-pointer accent-primary"
-                />
-                <span className="w-12 font-mono text-xs text-muted-foreground">
-                  {settings.autoplay_delay_secs === 0
-                    ? "Instant"
-                    : `${settings.autoplay_delay_secs}s`}
-                </span>
-              </div>
+            <SettingRow label="Pause between lessons" description="A moment to breathe before the next one">
+              <Slider
+                label="Pause between lessons"
+                value={delay}
+                min={0}
+                max={AUTOPLAY_DELAY_MAX}
+                valueText={delayText}
+                onChange={(v) => update("autoplay_delay_secs", v)}
+              />
             </SettingRow>
           )}
-          <SettingRow
-            icon={<ArrowsClockwise className="size-4" />}
-            label="Resume from last position"
-            description="Continue videos from where you left off"
-          >
+          <SettingRow label="Resume where you stopped" description="Videos reopen at your last position">
             <Toggle
+              label="Resume where you stopped"
               checked={settings.resume_position}
               onChange={(v) => update("resume_position", String(v))}
             />
           </SettingRow>
-          <SettingRow
-            icon={<FastForward className="size-4" />}
-            label="Default playback speed"
-          >
+          <SettingRow label="Speed">
             <Select
+              label="Default playback speed"
               value={String(settings.default_speed)}
               onChange={(v) => update("default_speed", v)}
               options={SPEED_OPTIONS}
             />
           </SettingRow>
-          <SettingRow
-            icon={<SpeakerHigh className="size-4" />}
-            label="Default volume"
-          >
-            <div className="flex items-center gap-2.5">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={settings.default_volume}
-                onChange={(e) => update("default_volume", e.target.value)}
-                className="h-1.5 w-24 cursor-pointer accent-primary"
-              />
-              <span className="w-8 font-mono text-xs text-muted-foreground">
-                {settings.default_volume}%
-              </span>
-            </div>
+          <SettingRow label="Volume">
+            <Slider
+              label="Default volume"
+              value={settings.default_volume}
+              min={0}
+              max={100}
+              valueText={`${settings.default_volume}%`}
+              onChange={(v) => update("default_volume", v)}
+            />
           </SettingRow>
-          <SettingRow
-            icon={<MonitorPlay className="size-4" />}
-            label="Skip forward / backward"
-          >
+          <SettingRow label="Skip" description="How far the back and forward buttons jump">
             <Select
+              label="Skip forward / backward"
               value={String(settings.skip_forward_secs)}
               onChange={(v) => {
                 update("skip_forward_secs", v);
@@ -689,92 +571,59 @@ export function Settings({ className }: SettingsProps) {
               options={SKIP_OPTIONS}
             />
           </SettingRow>
-        </SectionCard>
+        </SettingsGroup>
 
-        <SectionCard
-          title="Library"
-          icon={<Database className="size-4 text-info" weight="bold" />}
-          index={1}
-        >
+        <SettingsGroup title="Library">
           {stats && (
-            <div className="grid grid-cols-3 gap-2.5">
-              <StatChip
-                icon={<Stack className="size-3.5" />}
-                label="Courses"
-                value={stats.totalCourses}
-              />
-              <StatChip
-                icon={<MonitorPlay className="size-3.5" />}
-                label="Lessons"
-                value={stats.totalLessons}
-              />
-              <StatChip
-                icon={<Notepad className="size-3.5" />}
-                label="Notes"
-                value={stats.totalNotes}
-              />
-              <StatChip
-                icon={<BookmarkSimple className="size-3.5" />}
-                label="Bookmarks"
-                value={stats.totalBookmarks}
-              />
-              <StatChip
-                icon={<Heart className="size-3.5" />}
-                label="Favorites"
-                value={stats.totalFavorites}
-              />
-              <StatChip
-                icon={<Folder className="size-3.5" />}
-                label="Sections"
-                value={stats.totalSections}
-              />
+            <div className="grid grid-cols-3 gap-x-4 gap-y-6 px-5 py-5 sm:grid-cols-6">
+              <Figure label="Courses" value={stats.totalCourses} />
+              <Figure label="Sections" value={stats.totalSections} />
+              <Figure label="Lessons" value={stats.totalLessons} />
+              <Figure label="Notes" value={stats.totalNotes} />
+              <Figure label="Saved" value={stats.totalBookmarks} />
+              <Figure label="Favorites" value={stats.totalFavorites} />
             </div>
           )}
-          <div className="mt-3 rounded-lg bg-secondary/50 px-3 py-2.5">
-            <div className="font-sans text-xs text-muted-foreground">Database location</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-foreground/70">
-              {stats?.dbPath}
-            </div>
-          </div>
-        </SectionCard>
+          <SettingRow
+            icon={<Database />}
+            label="Database"
+            description={
+              <span className="select-text" title={stats?.dbPath}>
+                {stats?.dbPath}
+              </span>
+            }
+          >
+            {stats?.dbPath && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void revealItemInDir(stats.dbPath).catch(() => {})}
+              >
+                Show in Finder
+              </Button>
+            )}
+          </SettingRow>
+        </SettingsGroup>
 
-        <UpdatesSection index={2} />
+        <GoogleDriveSection />
 
-        <GoogleDriveSection index={3} />
+        <ServersSection />
 
-        <ServersSection index={4} />
+        <UpdatesSection />
 
-        <SectionCard
-          title="Danger Zone"
-          icon={<WarningCircle className="size-4 text-destructive" weight="bold" />}
-          index={5}
+        <SettingsGroup
+          title="Erase all data"
+          footer="Your video files are never touched — only what Ckourse knows about them."
         >
-          <div className="flex items-center justify-between gap-4 rounded-lg px-2 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                <Trash className="size-4" />
-              </div>
-              <div>
-                <div className="font-sans text-sm font-medium text-foreground">
-                  Delete all data
-                </div>
-                <div className="font-sans text-xs text-muted-foreground">
-                  Permanently remove all courses, progress, notes, and settings
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowDeleteDialog(true)}
-              className={cn(
-                "shrink-0 rounded-lg border border-destructive/30 px-4 py-2",
-                "font-sans text-sm font-semibold text-destructive",
-                "transition-colors hover:bg-destructive/10",
-              )}
-            >
-              Delete all
-            </button>
-          </div>
-        </SectionCard>
+          <SettingRow
+            label="Start over"
+            description="Removes every course, all progress, notes and settings"
+          >
+            <Button variant="destructive-outline" size="sm" onClick={() => setShowDeleteDialog(true)}>
+              Erase…
+            </Button>
+          </SettingRow>
+        </SettingsGroup>
       </div>
 
       {showDeleteDialog && (

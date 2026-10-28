@@ -1,41 +1,29 @@
 import { useState, useEffect } from "react";
+import { getThemePreference, THEME_CHANGE_EVENT, type Theme, type ThemePreference } from "@/lib/theme";
 
-type Theme = "dark" | "light";
-
-function getTheme(): Theme {
+function current(): Theme {
   return document.documentElement.classList.contains("light") ? "light" : "dark";
 }
 
+/** The theme on screen right now, plus the user's saved preference (which may be "system"). */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof document === "undefined") {
-      const stored = localStorage.getItem("ckourse-theme") as Theme | null;
-      return stored ?? "dark";
-    }
-    return getTheme();
-  });
+  const [theme, setTheme] = useState<Theme>(current);
+  const [preference, setPreference] = useState<ThemePreference>(getThemePreference);
 
-  // Observe DOM class changes so we stay in sync with AnimatedThemeToggler
   useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setTheme(getTheme());
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
+    const sync = () => {
+      setTheme(current());
+      setPreference(getThemePreference());
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
+    // Switching to "system" while the OS already matches leaves the DOM untouched
+    window.addEventListener(THEME_CHANGE_EVENT, sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener(THEME_CHANGE_EVENT, sync);
+    };
   }, []);
 
-  // Apply initial theme from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("ckourse-theme") as Theme | null;
-    if (stored === "light") {
-      document.documentElement.classList.add("light");
-    } else {
-      document.documentElement.classList.remove("light");
-    }
-  }, []);
-
-  return { theme } as const;
+  return { theme, preference } as const;
 }

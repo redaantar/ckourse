@@ -4,11 +4,6 @@ export interface NavItem {
   path: string;
 }
 
-export interface BreadcrumbItem {
-  label: string;
-  path?: string;
-}
-
 export interface SectionMemory {
   /** Get the remembered path for a section root, or the root itself. */
   get(sectionRoot: string): string;

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   NotePencilIcon as NotePencil,
   PencilSimpleIcon as PencilSimple,
@@ -5,7 +6,9 @@ import {
 } from "@phosphor-icons/react";
 import { NoteEditor } from "./NoteEditor";
 import { SNAPPY } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import type { Note } from "@/types";
+import { formatTimestamp } from "@/lib/format";
 
 interface NotesPanelProps {
   notes: Note[];
@@ -43,17 +46,17 @@ export function NotesPanel({
       ) : (
         <button
           onClick={() => onSetShowEditor(true)}
-          className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 font-sans text-xs text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground"
+          className="flex h-12 items-center gap-2.5 rounded-2xl bg-secondary/70 px-4 font-sans text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           style={{ transitionTimingFunction: SNAPPY }}
         >
-          <NotePencil className="size-3.5" />
-          Add a note...
+          <NotePencil className="size-4" />
+          Write a note at {formatTimestamp(videoTime)}
         </button>
       )}
 
       {notes.length === 0 && !showEditor && (
-        <p className="py-4 text-center font-sans text-xs text-muted-foreground/60">
-          No notes yet. Start capturing your thoughts.
+        <p className="px-1 py-2 font-sans text-[13px] text-muted-foreground">
+          Notes you write here stay pinned to this lesson. Type @ in a note to link the exact moment.
         </p>
       )}
 
@@ -95,6 +98,8 @@ function NoteCard({
   onCancelEdit,
   onTimestampClick,
 }: NoteCardProps) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   if (isEditing) {
     return (
       <NoteEditor
@@ -114,12 +119,12 @@ function NoteCard({
 
   return (
     <div
-      className="group rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-secondary/50"
+      className="group rounded-2xl border border-border bg-card px-4 py-3 shadow-card"
       style={{ transitionTimingFunction: SNAPPY }}
     >
       <div className="flex items-start gap-2">
         <div
-          className="note-content flex-1 font-sans text-xs leading-relaxed text-foreground/90"
+          className="note-content min-w-0 flex-1 font-sans text-sm leading-relaxed text-foreground select-text"
           dangerouslySetInnerHTML={{ __html: note.content }}
           onClick={(e) => {
             const target = e.target as HTMLElement;
@@ -131,30 +136,44 @@ function NoteCard({
             }
           }}
         />
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-0.5 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+            confirmingDelete ? "opacity-100" : "opacity-0",
+          )}
+          onMouseLeave={() => setConfirmingDelete(false)}
+        >
           <button
             onClick={onStartEdit}
-            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            aria-label="Edit note"
+            title="Edit note"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <PencilSimple className="size-3" />
+            <PencilSimple className="size-3.5" />
           </button>
-          <button
-            onClick={() => onDelete(note.id)}
-            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
-          >
-            <Trash className="size-3" />
-          </button>
+          {confirmingDelete ? (
+            <button
+              onClick={() => onDelete(note.id)}
+              onBlur={() => setConfirmingDelete(false)}
+              autoFocus
+              className="rounded-full bg-destructive/12 px-2.5 py-1 font-sans text-xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+            >
+              Delete?
+            </button>
+          ) : (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              aria-label="Delete note"
+              title="Delete note"
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive"
+            >
+              <Trash className="size-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="mt-1.5 flex items-center gap-2">
-        <span className="font-mono text-[10px] text-muted-foreground/50">
-          {note.lessonTitle}
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground/50">
-          {formatted}
-        </span>
-      </div>
+      <p className="mt-1.5 font-sans text-xs text-muted-foreground">{formatted}</p>
     </div>
   );
 }

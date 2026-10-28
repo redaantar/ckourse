@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { searchContent } from "@/lib/store";
 import type { SearchResult } from "@/types";
 import { spring } from "./constants";
+import { courseColor } from "@/lib/color";
 
 const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
 
@@ -42,14 +43,17 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
     }
   }, [open]);
 
-  // "/" keybind to open modal
+  // "/" or ⌘K opens the modal
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === "/" &&
-        !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement)
-      ) {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        !!target?.isContentEditable;
+      const isSlash = e.key === "/" && !typing && !e.metaKey && !e.ctrlKey;
+      const isCmdK = e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey);
+      if (isSlash || isCmdK) {
         e.preventDefault();
         openModal();
       }
@@ -98,9 +102,9 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, -1));
-    } else if (e.key === "Enter" && activeIndex >= 0) {
+    } else if (e.key === "Enter" && results.length > 0) {
       e.preventDefault();
-      navigateToResult(results[activeIndex]);
+      navigateToResult(results[Math.max(activeIndex, 0)]);
     } else if (e.key === "Escape") {
       closeModal();
     }
@@ -115,9 +119,12 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
       {/* Sidebar trigger button */}
       <button
         onClick={openModal}
+        aria-label="Search courses and lessons"
+        aria-keyshortcuts="/ Meta+K"
         className={cn(
-          "squircle flex w-full items-center bg-sidebar-accent/50 py-2.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
-          collapsed ? "justify-center px-0" : "gap-3 px-3",
+          "flex h-8 w-full items-center rounded-lg text-muted-foreground transition-colors hover:text-sidebar-foreground",
+          // Collapsed, a filled field would read as the selected item; it becomes a plain icon button
+          collapsed ? "justify-center px-0 hover:bg-sidebar-accent/60" : "gap-3 bg-sidebar-accent px-3",
         )}
       >
         <MagnifyingGlass className="size-4 shrink-0" />
@@ -129,9 +136,9 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
             transition: `opacity ${spring()}, max-width ${spring()}`,
           }}
         >
-          <span className="font-sans text-sm">Search</span>
-          <kbd className="ml-auto shrink-0 rounded border border-sidebar-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-            /
+          <span className="font-sans text-[13px]">Search</span>
+          <kbd className="ml-auto shrink-0 font-sans text-[11px] text-muted-foreground">
+            ⌘K
           </kbd>
         </div>
       </button>
@@ -149,12 +156,16 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
 
       {/* Modal */}
       <div
-        className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
-        style={{ pointerEvents: open ? "auto" : "none" }}
+        className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[20vh]"
+        style={{ pointerEvents: open ? "auto" : "none", visibility: open ? "visible" : "hidden", transition: open ? undefined : "visibility 0s 350ms" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+        aria-hidden={!open}
         onPointerDown={closeModal}
       >
         <div
-          className="w-full max-w-lg"
+          className="relative w-full max-w-xl overflow-hidden rounded-2xl bg-popover shadow-pop"
           style={{
             opacity: open ? 1 : 0,
             transform: open ? "scale(1) translateY(0)" : "scale(0.96) translateY(-8px)",
@@ -162,11 +173,6 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {/* border layer */}
-          <div className="squircle-subtle absolute inset-0 bg-border/60" />
-          {/* fill layer */}
-          <div className="squircle-subtle absolute inset-px bg-card" />
-
           <div className="relative">
             {/* Search input row */}
             <div className="flex items-center gap-3 px-4 py-3.5">
@@ -174,6 +180,7 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
               <input
                 ref={inputRef}
                 type="text"
+                aria-label="Search courses and lessons"
                 value={query}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
@@ -189,6 +196,7 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
                     setActiveIndex(-1);
                     inputRef.current?.focus();
                   }}
+                  aria-label="Clear search"
                   className="text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <X className="size-4" />
@@ -203,12 +211,12 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
             {/* Divider + results */}
             {hasResults && (
               <>
-                <div className="mx-4 h-px bg-border/50" />
+                <div className="h-px bg-border" />
                 <div className="max-h-80 overflow-y-auto py-2">
                   {courseResults.length > 0 && (
                     <div>
                       <div className="px-4 pb-1 pt-2">
-                        <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                        <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                           Courses
                         </span>
                       </div>
@@ -225,16 +233,16 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
                               "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
                               activeIndex === globalIdx
                                 ? "bg-secondary text-foreground"
-                                : "text-foreground hover:bg-secondary/60",
+                                : "text-foreground hover:bg-secondary",
                             )}
                           >
                             <span
                               className="flex size-7 shrink-0 items-center justify-center rounded-lg"
-                              style={{ backgroundColor: `${r.accentColor}22` }}
+                              style={{ backgroundColor: `${courseColor(r.accentColor)}22` }}
                             >
                               <BookOpen
                                 className="size-4"
-                                style={{ color: r.accentColor }}
+                                style={{ color: courseColor(r.accentColor) }}
                                 weight="bold"
                               />
                             </span>
@@ -248,10 +256,10 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
                   {lessonResults.length > 0 && (
                     <div className={cn(courseResults.length > 0 && "mt-1")}>
                       {courseResults.length > 0 && (
-                        <div className="mx-4 my-1 h-px bg-border/40" />
+                        <div className="mx-4 my-1 h-px bg-border" />
                       )}
                       <div className="px-4 pb-1 pt-2">
-                        <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                        <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                           Lessons
                         </span>
                       </div>
@@ -268,16 +276,16 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
                               "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
                               activeIndex === globalIdx
                                 ? "bg-secondary text-foreground"
-                                : "text-foreground hover:bg-secondary/60",
+                                : "text-foreground hover:bg-secondary",
                             )}
                           >
                             <span
                               className="flex size-7 shrink-0 items-center justify-center rounded-lg"
-                              style={{ backgroundColor: `${r.accentColor}22` }}
+                              style={{ backgroundColor: `${courseColor(r.accentColor)}22` }}
                             >
                               <PlayCircle
                                 className="size-4"
-                                style={{ color: r.accentColor }}
+                                style={{ color: courseColor(r.accentColor) }}
                                 weight="bold"
                               />
                             </span>
@@ -299,7 +307,7 @@ export function SidebarSearch({ collapsed }: SidebarSearchProps) {
             {/* Empty state */}
             {query.trim() && !hasResults && (
               <>
-                <div className="mx-4 h-px bg-border/50" />
+                <div className="h-px bg-border" />
                 <div className="px-4 py-8 text-center">
                   <p className="font-sans text-sm text-muted-foreground">
                     No results for <span className="text-foreground">"{query}"</span>
