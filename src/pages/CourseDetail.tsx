@@ -260,7 +260,13 @@ function CourseDetailInner({
   const lessonResources = activeLesson
     ? courseData.resources.filter((r) => r.lessonId === activeLesson.id)
     : [];
-  const hasResources = courseResources.length > 0 || lessonResources.length > 0;
+  // Every other lesson's files, in course order, so attachments are findable
+  // without first playing the lesson they belong to.
+  const otherLessonResources = allLessons
+    .filter((l) => l.id !== activeLesson?.id)
+    .map((l) => ({ lesson: l, resources: courseData.resources.filter((r) => r.lessonId === l.id) }))
+    .filter((g) => g.resources.length > 0);
+  const hasResources = courseData.resources.length > 0;
   const [notes, setNotes] = useState<Note[]>([]);
   const lessonNotes = activeLesson
     ? notes.filter((n) => n.lessonId === activeLesson.id)
@@ -869,8 +875,24 @@ function CourseDetailInner({
                     title="Course"
                     resources={courseResources}
                     onOpen={handleOpenResource}
-                    showTitle={lessonResources.length > 0}
+                    showTitle={lessonResources.length > 0 || otherLessonResources.length > 0}
                   />
+                )}
+                {otherLessonResources.length > 0 && (
+                  <div className="flex flex-col gap-3 border-t border-border pt-3">
+                    <span className="font-sans text-xs font-medium text-muted-foreground">
+                      Other lessons
+                    </span>
+                    {otherLessonResources.map(({ lesson, resources }) => (
+                      <ResourceGroup
+                        key={lesson.id}
+                        title={lesson.title}
+                        resources={resources}
+                        onOpen={handleOpenResource}
+                        showTitle
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
             )}
