@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useContext } from "react";
-import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation, Link } from "react-router-dom";
 import { ActivePathContext } from "@/hooks/usePageVisible";
 import { toast } from "sonner";
 import {
   CheckCircleIcon as CheckCircle,
-  ClockIcon as Clock,
-  ArrowLeftIcon as ArrowLeft,
-  NotePencilIcon as NotePencil,
+  CircleIcon as Circle,
+  CaretLeftIcon as CaretLeft,
+  CaretRightIcon as CaretRight,
   PencilSimpleIcon as PencilSimple,
-  FolderOpenIcon as FolderOpen,
-  SpinnerGapIcon as SpinnerGap,
   SidebarSimpleIcon as SidebarSimple,
   BookmarkSimpleIcon as BookmarkSimple,
   HeartIcon as Heart,
@@ -18,8 +16,9 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { reportError } from "@/lib/posthog";
-import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Button } from "@/components/ui/button";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { VideoPlayerHandle } from "@/types";
 import { VideoPlayer } from "@/components/course-detail/VideoPlayer";
 import { SectionAccordion } from "@/components/course-detail/SectionAccordion";
@@ -28,11 +27,11 @@ import { CourseEditPanel } from "@/components/course-detail/CourseEditPanel";
 import { CourseCelebration } from "@/components/course-detail/CourseCelebration";
 import { PdfViewer } from "@/components/course-detail/PdfViewer";
 import { ResourceList } from "@/components/course-detail/ResourceList";
-import { EASE_OUT, SNAPPY } from "@/lib/constants";
+import { EASE_OUT, SPRING_SMOOTH } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
 import type { Note, Course, CourseDetail as CourseDetailData, Lesson, Resource, Subtitle } from "@/types";
 import { useSettings } from "@/hooks/useSettings";
-import { useCourseTitles } from "@/components/app-shell/CourseTitleContext";
+import { routeTitles } from "@/components/app-shell/constants";
 import {
   getCourse,
   getCourseDetail,
@@ -57,29 +56,6 @@ interface CourseDetailProps {
   className?: string;
 }
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge variant="default">
-          Completed
-        </Badge>
-      );
-    case "in-progress":
-      return (
-        <Badge variant="info">
-          In Progress
-        </Badge>
-      );
-    case "not-started":
-      return (
-        <Badge variant="secondary">
-          Not Started
-        </Badge>
-      );
-  }
-}
-
 /** Remote resources (`srv:` / `gdrive:`) have no local path the OS could open. */
 function isRemotePath(path: string): boolean {
   return path.startsWith("srv:") || path.startsWith("gdrive:");
@@ -93,10 +69,13 @@ export function CourseDetail({ className }: CourseDetailProps) {
   const isValidId = courseId != null && !isNaN(numericId) && numericId > 0;
   const lessonParam = searchParams.get("lesson");
   const fromParam = searchParams.get("from") || "/";
+  const seekParam = searchParams.get("t");
+  const location = useLocation();
 
   const [course, setCourse] = useState<Course | null>(null);
   const [courseData, setCourseData] = useState<CourseDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const reload = useCallback(() => {
@@ -105,13 +84,24 @@ export function CourseDetail({ className }: CourseDetailProps) {
       ([c, d]) => {
         setCourse(c);
         setCourseData(d);
+        setLoadError(false);
       },
     );
   }, [numericId, isValidId]);
 
+  const initialLoad = useCallback(() => {
+    setLoading(true);
+    reload()
+      .catch((err) => {
+        reportError(err, "CourseDetail.load", { courseId: numericId });
+        setLoadError(true);
+      })
+      .finally(() => setLoading(false));
+  }, [reload, numericId]);
+
   useEffect(() => {
-    reload().finally(() => setLoading(false));
-  }, [reload]);
+    initialLoad();
+  }, [initialLoad]);
 
   // Refresh data when this page becomes visible again (keep-alive)
   const activePath = useContext(ActivePathContext);
@@ -130,21 +120,38 @@ export function CourseDetail({ className }: CourseDetailProps) {
     return (
       <div
         className={cn(
-          "mx-auto flex max-w-4xl items-center justify-center py-32",
+          "min-h-[60vh]",
           className,
         )}
+        aria-busy="true"
       >
-        <SpinnerGap className="size-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!isValidId || !course || !courseData) {
     return (
-      <div className={cn("mx-auto max-w-4xl", className)}>
+      <div className={cn("flex flex-col items-center justify-center gap-3 py-32 text-center", className)}>
         <p className="font-sans text-sm text-muted-foreground">
-          {!isValidId ? "Invalid course." : "Course not found."}
+          {!isValidId
+            ? "Invalid course."
+            : loadError
+              ? "This course didn't load. Nothing is lost; try again in a moment."
+              : "This course isn't in your library anymore."}
         </p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link to={fromParam}>
+              <CaretLeft className="size-3.5" weight="bold" />
+              Back
+            </Link>
+          </Button>
+          {isValidId && loadError && (
+            <Button size="sm" onClick={initialLoad}>
+              Try again
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
@@ -176,6 +183,8 @@ export function CourseDetail({ className }: CourseDetailProps) {
       course={course}
       courseData={courseData}
       initialLessonId={lessonParam ? Number(lessonParam) : undefined}
+      initialSeek={seekParam ? Number(seekParam) : undefined}
+      navKey={location.key}
       backTo={fromParam}
       isVisible={isVisible}
       onDataChange={reload}
@@ -193,6 +202,8 @@ function CourseDetailInner({
   course,
   courseData,
   initialLessonId,
+  initialSeek,
+  navKey,
   backTo,
   isVisible,
   onDataChange,
@@ -203,6 +214,10 @@ function CourseDetailInner({
   course: Course;
   courseData: CourseDetailData;
   initialLessonId?: number;
+  /** Seconds into the lesson to start at (?t=), e.g. from a note's timestamp */
+  initialSeek?: number;
+  /** Changes on every navigation, so revisiting the same link re-applies it */
+  navKey: string;
   backTo: string;
   isVisible: boolean;
   onDataChange: () => Promise<void>;
@@ -211,12 +226,7 @@ function CourseDetailInner({
   className?: string;
 }) {
   const { settings, loaded: settingsLoaded } = useSettings();
-  const { setTitle: setBreadcrumbTitle } = useCourseTitles();
   const allLessons = courseData.sections.flatMap((s) => s.lessons);
-
-  useEffect(() => {
-    setBreadcrumbTitle(course.id, course.title);
-  }, [course.id, course.title, setBreadcrumbTitle]);
 
   const requestedLesson = initialLessonId
     ? allLessons.find((l) => l.id === initialLessonId)
@@ -234,7 +244,7 @@ function CourseDetailInner({
     if (initialLessonId && allLessons.some((l) => l.id === initialLessonId)) {
       setActiveLessonId(initialLessonId);
     }
-  }, [initialLessonId]);
+  }, [initialLessonId, navKey]);
 
   const activeLesson = allLessons.find((l) => l.id === activeLessonId) ?? allLessons[0];
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
@@ -256,6 +266,23 @@ function CourseDetailInner({
   const [videoTime, setVideoTime] = useState(0);
   const videoTimeRef = useRef(0);
   const videoPlayerRef = useRef<VideoPlayerHandle>(null);
+
+  // Arriving from a note's timestamp: land on that moment once its lesson is the active one.
+  // The player holds the seek until the video is ready, so the resume position can't override it.
+  const noteSeekRef = useRef<{ lessonId: number; seconds: number } | null>(null);
+  useEffect(() => {
+    const lessonId = initialLessonId ?? activeLesson?.id;
+    noteSeekRef.current =
+      initialSeek != null && Number.isFinite(initialSeek) && lessonId != null
+        ? { lessonId, seconds: initialSeek }
+        : null;
+  }, [navKey]);
+  useEffect(() => {
+    const seek = noteSeekRef.current;
+    if (!seek || activeLesson?.id !== seek.lessonId) return;
+    noteSeekRef.current = null;
+    videoPlayerRef.current?.seekTo(seek.seconds);
+  }, [navKey, activeLesson?.id]);
   const [pendingTimestampNav, setPendingTimestampNav] = useState<{
     seconds: number;
     lessonId: number;
@@ -611,84 +638,82 @@ function CourseDetailInner({
     }
   };
 
-  const hasNext =
-    activeLesson &&
-    allLessons.findIndex((l) => l.id === activeLesson.id) <
-      allLessons.length - 1;
+  const activeIndex = activeLesson ? allLessons.findIndex((l) => l.id === activeLesson.id) : -1;
+  const hasNext = activeIndex >= 0 && activeIndex < allLessons.length - 1;
+  const upcoming = hasNext ? allLessons[activeIndex + 1] : null;
+  const activeSection = activeLesson
+    ? courseData.sections.find((s) => s.lessons.some((l) => l.id === activeLesson.id))
+    : undefined;
+  const isDrive = course.folderPath.startsWith("gdrive:");
+  const isServer = course.folderPath.startsWith("srv:");
 
   return (
-    <div className={cn("mx-auto max-w-6xl", className)}>
-      <div
-        className="mb-4 flex items-center justify-between"
-        style={{
-          opacity: mounted ? 1 : 0,
-          transform: mounted ? "translateY(0)" : "translateY(8px)",
-          transition: `opacity 500ms ${EASE_OUT}, transform 500ms ${EASE_OUT}`,
-        }}
-      >
-        <Link
-          to={backTo}
-          className="inline-flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back
-        </Link>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurriculumOpen((o) => !o)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 font-sans text-xs font-medium transition-colors hover:bg-secondary hover:text-foreground",
-              curriculumOpen ? "text-muted-foreground" : "text-foreground bg-secondary",
-            )}
-            style={{ transitionTimingFunction: SNAPPY }}
-          >
-            <SidebarSimple
-              className="size-3.5 transition-transform duration-300"
-              style={{
-                transform: curriculumOpen ? "scaleX(1)" : "scaleX(-1)",
-                transitionTimingFunction: SNAPPY,
-              }}
-            />
-            {curriculumOpen ? "Hide" : "Show Curriculum"}
-          </button>
-          <button
-            onClick={onToggleBookmark}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 font-sans text-xs font-medium transition-colors hover:bg-secondary hover:text-foreground",
-              course.bookmarked ? "text-primary" : "text-muted-foreground",
-            )}
-            style={{ transitionTimingFunction: SNAPPY }}
-          >
-            <BookmarkSimple className="size-3.5" weight={course.bookmarked ? "fill" : "regular"} />
-            {course.bookmarked ? "Bookmarked" : "Bookmark"}
-          </button>
-          <button
-            onClick={onEdit}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            style={{ transitionTimingFunction: SNAPPY }}
-          >
-            <PencilSimple className="size-3.5" />
-            Edit
-          </button>
-        </div>
-      </div>
-
-      <div
-        className="flex flex-col lg:flex-row"
-        style={{
-          gap: curriculumOpen ? 20 : 0,
-          transition: `gap 400ms ${SNAPPY}`,
-        }}
-      >
+    <div className={cn("min-h-full", className)}>
+      <div className="flex min-h-full flex-col lg:flex-row">
         <div
-          className="flex flex-1 flex-col gap-4"
+          className="mx-auto flex w-full min-w-0 max-w-[1200px] flex-1 flex-col px-6 pt-10 pb-20 lg:px-10"
           style={{
             opacity: mounted ? 1 : 0,
             transform: mounted ? "translateY(0)" : "translateY(12px)",
             transition: `opacity 600ms ${EASE_OUT} 80ms, transform 600ms ${EASE_OUT} 80ms`,
           }}
         >
+          {/* Toolbar: where you came from, what you're watching, and three quiet tools */}
+          <div className="mb-4 flex items-center gap-3">
+            <Link
+              to={backTo}
+              aria-label={`Back to ${routeTitles[backTo.split("?")[0]] ?? "previous page"}`}
+              title={`Back to ${routeTitles[backTo.split("?")[0]] ?? "previous page"}`}
+              className="-ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <CaretLeft className="size-4" weight="bold" />
+            </Link>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate font-sans text-sm font-medium text-foreground" title={course.title}>
+                {course.title}
+              </h1>
+              <p className="flex items-center gap-1.5 truncate font-sans text-xs text-muted-foreground">
+                {course.author || "Unknown author"}
+                {(isDrive || isServer) && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    {isDrive ? <GoogleDriveLogo className="size-3" /> : <HardDrives className="size-3" />}
+                    {isDrive ? "Google Drive" : "Server"}
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onToggleBookmark}
+                aria-pressed={course.bookmarked}
+                aria-label={course.bookmarked ? "Remove from Saved" : "Save course"}
+                title={course.bookmarked ? "Remove from Saved" : "Save course"}
+                className={cn(course.bookmarked && "text-foreground")}
+              >
+                <BookmarkSimple className="size-[18px]" weight={course.bookmarked ? "fill" : "regular"} />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={onEdit} aria-label="Edit course" title="Edit course">
+                <PencilSimple className="size-[18px]" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setCurriculumOpen((o) => !o)}
+                aria-expanded={curriculumOpen}
+                aria-controls="course-curriculum"
+                aria-label={curriculumOpen ? "Hide course content" : "Show course content"}
+                title={curriculumOpen ? "Hide course content" : "Show course content"}
+                className={cn("hidden lg:inline-flex", !curriculumOpen && "bg-secondary text-foreground")}
+              >
+                <SidebarSimple className="size-[18px] -scale-x-100" weight={curriculumOpen ? "regular" : "fill"} />
+              </Button>
+            </div>
+          </div>
+
           <VideoPlayer
             ref={videoPlayerRef}
             lesson={activeLesson}
@@ -710,133 +735,97 @@ function CourseDetailInner({
           />
 
           {activeLesson && (
-            <div className="flex items-center gap-2">
-              <h2 className="font-sans text-base font-semibold text-foreground">
-                {activeLesson.title}
-              </h2>
-              <button
-                onClick={() => handleToggleFavorite(activeLesson.id)}
-                className={cn(
-                  "rounded-md p-1 transition-colors",
-                  activeLesson.favorited
-                    ? "text-red-500 hover:bg-red-500/10"
-                    : "text-muted-foreground hover:bg-secondary hover:text-red-400",
+            <div className="mt-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-sans text-[13px] text-muted-foreground tabular-nums">
+                  {activeSection && <>{activeSection.title} · </>}
+                  Lesson {activeIndex + 1} of {allLessons.length}
+                  {activeLesson.duration > 0 && <> · {formatDuration(activeLesson.duration)}</>}
+                </p>
+                <h2 className="mt-1 font-heading text-2xl leading-tight font-semibold text-balance text-foreground">
+                  {activeLesson.title}
+                </h2>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleToggleFavorite(activeLesson.id)}
+                  aria-label={activeLesson.favorited ? "Remove from favorites" : "Add to favorites"}
+                  aria-pressed={activeLesson.favorited}
+                  title={activeLesson.favorited ? "Remove from favorites" : "Favorite this lesson"}
+                  className={cn(activeLesson.favorited && "text-destructive hover:text-destructive")}
+                >
+                  <Heart className="size-[18px]" weight={activeLesson.favorited ? "fill" : "regular"} />
+                </Button>
+                <Button
+                  variant={activeLesson.completed ? "secondary" : "outline"}
+                  onClick={() => handleToggleComplete(activeLesson.id)}
+                  aria-pressed={activeLesson.completed}
+                  title={activeLesson.completed ? "Mark as not done" : "Mark this lesson complete"}
+                >
+                  {activeLesson.completed ? (
+                    <CheckCircle key="done" className="check-pop size-4 text-primary" weight="fill" />
+                  ) : (
+                    <Circle className="size-4" />
+                  )}
+                  {activeLesson.completed ? "Completed" : "Mark complete"}
+                </Button>
+                {upcoming && (
+                  <Button
+                    onClick={handleNextLesson}
+                    title={`Next: ${upcoming.title}`}
+                    className="max-w-64"
+                  >
+                    <span className="truncate">Next lesson</span>
+                    <CaretRight className="size-3.5" weight="bold" />
+                  </Button>
                 )}
-              >
-                <Heart
-                  className="size-3.5"
-                  weight={activeLesson.favorited ? "fill" : "regular"}
-                />
-              </button>
-              <button
-                onClick={() => handleToggleComplete(activeLesson.id)}
-                className={cn(
-                  "ml-auto flex items-center gap-1 rounded-md px-2 py-1 font-sans text-xs font-medium transition-colors",
-                  activeLesson.completed
-                    ? "text-primary hover:bg-primary/10"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                )}
-              >
-                <CheckCircle
-                  className="size-3.5"
-                  weight={activeLesson.completed ? "fill" : "regular"}
-                />
-                {activeLesson.completed ? "Completed" : "Mark complete"}
-              </button>
+              </div>
             </div>
           )}
 
-          <div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <p className="font-sans text-sm text-muted-foreground">
-                by {course.author}
-              </p>
-              {getStatusBadge(course.status)}
-              {course.folderPath.startsWith("gdrive:") && (
-                <span
-                  className="flex items-center gap-1 rounded-full border border-border/60 bg-secondary px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground"
-                  title="Loaded from Google Drive"
-                >
-                  <GoogleDriveLogo className="size-3.5 text-info" weight="fill" />
-                  Google Drive
-                </span>
-              )}
-              {course.folderPath.startsWith("srv:") && (
-                <span
-                  className="flex items-center gap-1 rounded-full border border-border/60 bg-secondary px-2 py-1 font-sans text-[11px] font-medium text-muted-foreground"
-                  title="Streamed from your server"
-                >
-                  <HardDrives className="size-3.5 text-info" weight="fill" />
-                  Server
-                </span>
-              )}
-            </div>
+          {upcoming && (
+            <p className="mt-2 truncate font-sans text-xs text-muted-foreground">
+              Up next: <span className="text-foreground">{upcoming.title}</span>
+            </p>
+          )}
 
-            <div className="mt-3 flex flex-wrap items-center gap-3 sm:gap-5">
-              <div className="flex items-center gap-1.5">
-                <Clock className="size-3.5 text-muted-foreground" />
-                <span className="font-mono text-xs font-medium text-muted-foreground">
-                  {formatDuration(courseData.totalDuration)}
-                </span>
-              </div>
-              <span className="font-mono text-xs font-medium text-muted-foreground">
-                {course.completedLessons}/{course.totalLessons} lessons
-              </span>
-              <span className="font-mono text-xs font-medium text-muted-foreground">
-                {percentage}%
-              </span>
-            </div>
-
-            <div className="mt-2">
-              <ProgressBar value={percentage} />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-3 flex items-center gap-1">
-              {hasResources && (
-                <button
-                  onClick={() => setActiveTab("resources")}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-sans text-xs font-medium transition-colors",
-                    activeTab === "resources"
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  style={{ transitionTimingFunction: SNAPPY }}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <FolderOpen className="size-3.5" />
-                    Resources
-                    {lessonResources.length > 0 && (
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {lessonResources.length}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )}
-              <button
-                onClick={() => setActiveTab("notes")}
-                className={cn(
-                  "rounded-md px-2.5 py-1 font-sans text-xs font-medium transition-colors",
-                  activeTab === "notes"
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                style={{ transitionTimingFunction: SNAPPY }}
-              >
-                <span className="flex items-center gap-1.5">
-                  <NotePencil className="size-3.5" />
-                  Notes
-                  {lessonNotes.length > 0 && (
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {lessonNotes.length}
-                    </span>
-                  )}
-                </span>
-              </button>
-            </div>
+          <div className="mt-10">
+            {hasResources ? (
+              <SegmentedControl
+                aria-label="Lesson panels"
+                size="sm"
+                value={activeTab}
+                onChange={setActiveTab}
+                className="mb-4"
+                options={[
+                  {
+                    value: "notes",
+                    label: (
+                      <>
+                        Notes
+                        {lessonNotes.length > 0 && <span className="tabular-nums text-muted-foreground">{lessonNotes.length}</span>}
+                      </>
+                    ),
+                  },
+                  {
+                    value: "resources",
+                    label: (
+                      <>
+                        Resources
+                        {lessonResources.length > 0 && (
+                          <span className="tabular-nums text-muted-foreground">{lessonResources.length}</span>
+                        )}
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <h3 className="mb-4 font-heading text-[17px] font-semibold text-foreground">Notes</h3>
+            )}
 
             {activeTab === "resources" && hasResources && (
               <ResourceList
@@ -864,26 +853,29 @@ function CourseDetailInner({
         </div>
 
         <div
-          className="lg:shrink-0 overflow-clip self-start sticky top-4"
+          id="course-curriculum"
+          inert={!curriculumOpen}
+          className="overflow-clip lg:sticky lg:top-0 lg:h-[calc(100vh-1rem)] lg:shrink-0 lg:self-start"
           style={{
-            width: curriculumOpen ? 320 : 0,
+            width: curriculumOpen ? 368 : 0,
             opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(12px)",
-            transition: `width 400ms ${SNAPPY}, opacity 600ms ${EASE_OUT} 160ms, transform 600ms ${EASE_OUT} 160ms`,
+            transition: `width ${SPRING_SMOOTH}, opacity 600ms ${EASE_OUT} 160ms`,
           }}
         >
-          <div
-            className="flex h-[85vh] w-80 flex-col overflow-hidden rounded-xl border border-border bg-card"
-          >
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <h2 className="font-heading text-sm font-bold text-foreground">
-                Curriculum
-              </h2>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {course.completedLessons}/{course.totalLessons}
-              </span>
+          <div className="flex h-[70vh] w-[368px] flex-col overflow-hidden border-l border-border bg-sidebar/40 lg:h-full">
+            <div className="flex items-center gap-3 px-5 pt-10 pb-4">
+              <ProgressRing value={percentage} size={36} stroke={3.5} label="Course progress">
+                <span className="font-sans text-[10px] font-semibold tabular-nums text-foreground">{percentage}</span>
+              </ProgressRing>
+              <div className="min-w-0">
+                <h2 className="font-heading text-[15px] font-semibold text-foreground">Course content</h2>
+                <p className="font-sans text-xs text-muted-foreground tabular-nums">
+                  {course.completedLessons} of {course.totalLessons} lessons
+                  {courseData.totalDuration > 0 && <> · {formatDuration(courseData.totalDuration)}</>}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto px-2 pb-6">
               {courseData.sections.map((section) => (
                 <SectionAccordion
                   key={section.id}
@@ -912,20 +904,32 @@ function CourseDetailInner({
       <CourseCelebration
         show={showCelebration}
         onDone={() => setShowCelebration(false)}
+        title={course.title}
+        accentColor={course.accentColor}
       />
 
       {pendingTimestampNav && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="timestamp-dialog-title"
+          onClick={() => setPendingTimestampNav(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setPendingTimestampNav(null);
+          }}
+        >
           <div
-            className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-5"
+            onClick={(e) => e.stopPropagation()}
+            className="mx-4 w-full max-w-sm rounded-2xl bg-popover p-5 shadow-pop"
             style={{
               animation: "timestamp-dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1)",
             }}
           >
-            <h3 className="font-heading text-sm font-bold text-foreground">
+            <h3 id="timestamp-dialog-title" className="font-heading text-base font-semibold text-foreground">
               Switch lesson?
             </h3>
-            <p className="mt-2 font-sans text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-2 font-sans text-sm leading-relaxed text-muted-foreground">
               This timestamp is from{" "}
               <span className="font-medium text-foreground">
                 {pendingTimestampNav.lessonTitle}
@@ -933,20 +937,12 @@ function CourseDetailInner({
               . Switching will save your current position.
             </p>
             <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setPendingTimestampNav(null)}
-                className="rounded-lg px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                style={{ transitionTimingFunction: SNAPPY }}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setPendingTimestampNav(null)}>
                 Cancel
-              </button>
-              <button
-                onClick={confirmTimestampNav}
-                className="rounded-lg bg-primary px-3 py-1.5 font-sans text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                style={{ transitionTimingFunction: SNAPPY }}
-              >
+              </Button>
+              <Button size="sm" onClick={confirmTimestampNav} autoFocus>
                 Switch & Jump
-              </button>
+              </Button>
             </div>
           </div>
           <style>{`

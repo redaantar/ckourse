@@ -18,6 +18,7 @@
         "height": 800,
         "maximized": true,
         "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 18, "y": 24 },
         "acceptFirstMouse": true,
         "backgroundColor": "#0A0A0A"
       }

@@ -6,7 +6,7 @@ import {
   LinkIcon as LinkSimple,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { SquircleSearch } from "@/components/ui/SquircleSearch";
+import { SearchInput } from "@/components/ui/search-input";
 import type { CourseDetail, Lesson, Resource } from "@/types";
 
 /** Show the search box once a course has more files than fit at a glance. */
@@ -71,8 +71,8 @@ export function ResourceList({ courseData, activeLesson, onOpen, className }: Re
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {current.length > 0 && (
-        <div className="rounded-xl border border-primary/25 bg-primary/5 p-1.5">
-          <p className="px-2.5 pt-1 pb-1.5 font-sans text-[11px] font-medium text-primary">
+        <div className="rounded-2xl border border-border bg-card p-1.5 shadow-card">
+          <p className="px-2.5 pt-1 pb-1.5 font-sans text-xs font-medium text-foreground">
             This lesson
           </p>
           {current.map((resource) => (
@@ -82,22 +82,22 @@ export function ResourceList({ courseData, activeLesson, onOpen, className }: Re
       )}
 
       {courseData.resources.length > SEARCH_THRESHOLD && (
-        <SquircleSearch value={query} onChange={setQuery} placeholder="Search files..." />
+        <SearchInput value={query} onChange={setQuery} placeholder="Search files..." />
       )}
 
-      <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border">
+      <div className="max-h-[28rem] overflow-y-auto rounded-2xl border border-border bg-card shadow-card">
         {groups.length === 0 ? (
-          <p className="px-4 py-6 text-center font-sans text-xs text-muted-foreground">
+          <p className="px-4 py-6 text-center font-sans text-[13px] text-muted-foreground">
             No files match "{query}"
           </p>
         ) : (
           groups.map((group) => (
             <div key={group.title} className="border-b border-border p-1.5 last:border-b-0">
               <div className="flex items-baseline justify-between gap-3 px-2.5 pt-1 pb-1.5">
-                <p className="truncate font-sans text-[11px] font-medium text-muted-foreground">
+                <p className="truncate font-sans text-xs font-medium text-muted-foreground">
                   {group.title}
                 </p>
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                <span className="shrink-0 font-sans text-xs text-muted-foreground tabular-nums">
                   {group.items.length}
                 </span>
               </div>
@@ -137,14 +137,14 @@ function ResourceRow({ resource, lesson, active, onOpen }: ResourceRowProps) {
       <Icon
         className={cn(
           "size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground",
-          active && "text-primary",
+          active && "text-foreground",
         )}
       />
-      <span className="min-w-0 flex-1 truncate font-sans text-xs font-medium text-foreground">
+      <span className="min-w-0 flex-1 truncate font-sans text-[13px] font-medium text-foreground">
         {resource.title}
       </span>
       {lesson && (
-        <span className="hidden max-w-[45%] truncate font-sans text-[11px] text-muted-foreground sm:block">
+        <span className="hidden max-w-[45%] truncate font-sans text-xs text-muted-foreground sm:block">
           {lesson.title}
         </span>
       )}

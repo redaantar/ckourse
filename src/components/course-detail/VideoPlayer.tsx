@@ -34,6 +34,7 @@ import { getSubtitleVtt } from "@/lib/store";
 import { driveAuthStatus, driveConnect, driveCredentialsStatus } from "@/lib/drive";
 import { reportError } from "@/lib/posthog";
 import { EASE_OUT } from "@/lib/constants";
+import { courseColor } from "@/lib/color";
 
 interface VideoPlayerProps {
   lesson: Lesson | undefined;
@@ -232,12 +233,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const seekBarRef = useRef<HTMLDivElement>(null);
   const pendingSeekRef = useRef<number | null>(null);
+  // Track whether we've applied initial setup for the current lesson
+  const initialSeekAppliedRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     seekTo(seconds: number) {
       if (videoRef.current) {
-        if (videoRef.current.readyState < 1) pendingSeekRef.current = seconds;
-        else videoRef.current.currentTime = seconds;
+        // Until the lesson's start position is applied it would overwrite this seek, so hand it over
+        if (videoRef.current.readyState < 1 || initialSeekAppliedRef.current === null) pendingSeekRef.current = seconds;
+        if (videoRef.current.readyState >= 1) videoRef.current.currentTime = seconds;
         setVideoTime(seconds);
         onTimeUpdate?.(seconds);
       }
@@ -409,8 +413,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     }
   }, [lesson?.id, subtitles]);
 
-  // Track whether we've applied initial setup for the current lesson
-  const initialSeekAppliedRef = useRef<number | null>(null);
 
   // Reset the flag when lesson changes
   useEffect(() => {
@@ -524,6 +526,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       const v = videoRef.current;
       switch (e.key) {
         case "Escape":
+          setShowSpeedMenu(false);
+          setShowSubtitleMenu(false);
           if (document.fullscreenElement) {
             e.preventDefault();
             safeDomPromise(
@@ -740,7 +744,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       videoRef.current.currentTime + skipSeconds,
     );
     resetHideTimer();
-  }, [resetHideTimer]);
+  }, [resetHideTimer, skipSeconds]);
 
   const skipBackward = useCallback(() => {
     if (!videoRef.current) return;
@@ -749,7 +753,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       videoRef.current.currentTime - skipSeconds,
     );
     resetHideTimer();
-  }, [resetHideTimer]);
+  }, [resetHideTimer, skipSeconds]);
 
   const handleReplay = useCallback(() => {
     if (!videoRef.current) return;
@@ -1039,7 +1043,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 
   if (!lesson) {
     return (
-      <div className="relative overflow-hidden rounded-xl border border-border bg-black">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-black">
         <div className="flex aspect-video items-center justify-center bg-card">
           <p className="font-sans text-sm text-muted-foreground">
             No lesson selected
@@ -1052,7 +1056,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   return (
     <div
       ref={containerRef}
-      className="group/player relative overflow-hidden rounded-xl border border-border bg-black"
+      className="group/player relative overflow-hidden rounded-2xl border border-border bg-black shadow-card"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{ cursor: showControls ? "default" : "none" }}
@@ -1185,7 +1189,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
-                        className="text-primary"
+                        className="text-white"
                         strokeDasharray={`${(autoSkipSeconds > 0 ? (autoSkipSeconds - autoSkipRemaining) / autoSkipSeconds : 1) * 272} 272`}
                         style={{ transition: "stroke-dasharray 50ms linear" }}
                       />
@@ -1193,11 +1197,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                   )}
                   <button
                     onClick={onNext}
-                    className="relative flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    className="relative flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 font-sans text-sm font-medium text-black transition-opacity hover:opacity-90"
                   >
-                    Next Lesson
+                    Next lesson
                     {autoSkipEnabled && !autoSkipCancelled && (
-                      <span className="font-mono text-xs font-normal opacity-70">
+                      <span className="font-mono text-xs font-normal opacity-80" aria-label={`in ${Math.ceil(autoSkipRemaining)} seconds`}>
                         {Math.ceil(autoSkipRemaining)}
                       </span>
                     )}
@@ -1209,8 +1213,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                         e.stopPropagation();
                         setAutoSkipCancelled(true);
                       }}
-                      className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-white/20 font-sans text-[10px] text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+                      className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-white/25 font-sans text-[10px] text-white backdrop-blur-sm transition-colors hover:bg-white/40"
                       title="Cancel auto-skip"
+                      aria-label="Cancel auto-skip"
                     >
                       ✕
                     </button>
@@ -1224,9 +1229,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 
       {isBuffering && !hasEnded && !loadError && (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <div className="size-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary" />
+          <div className="size-10 animate-spin rounded-full border-[3px] border-white/20 border-t-white/90" />
           {needsPreparation && !videoSrc && (
-            <p className="font-sans text-sm text-white/70" role="status">Preparing video for playback…</p>
+            <p className="font-sans text-sm text-white/90" role="status">Preparing video for playback…</p>
           )}
         </div>
       )}
@@ -1237,11 +1242,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             className="flex max-w-sm flex-col items-center gap-4 px-6 text-center"
             style={{ animation: `fadeInUp 400ms ${EASE_OUT} both` }}
           >
-            <p className="font-sans text-sm text-white/90">{loadError}</p>
+            <p role="alert" className="font-sans text-sm text-white select-text">{loadError}</p>
             {needsSetup ? (
               <button
                 onClick={() => navigate("/settings")}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-2.5 font-sans text-sm font-medium text-black transition-opacity hover:opacity-90"
               >
                 <GoogleDriveLogo className="size-4" weight="fill" />
                 Go to Settings
@@ -1249,7 +1254,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             ) : needsReconnect ? (
               <button
                 onClick={handleReconnect}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-2.5 font-sans text-sm font-medium text-black transition-opacity hover:opacity-90"
               >
                 <GoogleDriveLogo className="size-4" weight="fill" />
                 Reconnect Google Drive
@@ -1257,7 +1262,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             ) : (
               <button
                 onClick={handleRetry}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-sans text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-2.5 font-sans text-sm font-medium text-black transition-opacity hover:opacity-90"
               >
                 <Clockwise className="size-4" weight="bold" />
                 Try again
@@ -1270,6 +1275,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
       {!isPlaying && !hasEnded && !isBuffering && !loadError && videoDuration > 0 && (
         <button
           onClick={togglePlay}
+          aria-label="Play"
           className="absolute inset-0 flex items-center justify-center"
         >
           <div
@@ -1277,10 +1283,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             style={{
               transitionTimingFunction: EASE_OUT,
               background: accentColor
-                ? `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)`
+                ? `linear-gradient(135deg, ${courseColor(accentColor)}30, ${courseColor(accentColor)}15)`
                 : "rgba(255,255,255,0.15)",
               boxShadow: accentColor
-                ? `0 0 24px ${accentColor}20`
+                ? `0 0 24px ${courseColor(accentColor)}20`
                 : "none",
             }}
           >
@@ -1294,16 +1300,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
           "absolute inset-x-0 bottom-0 flex flex-col bg-linear-to-t from-black/80 via-black/40 to-transparent px-3 pb-2.5 pt-10 transition-opacity duration-300",
           showControls || isSeeking ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
+        onFocus={resetHideTimer}
       >
         <div
           ref={seekBarRef}
-          className="group/seek relative mb-2 h-1 cursor-pointer rounded-full bg-white/20"
+          className="group/seek relative mb-2 h-1 cursor-pointer rounded-full bg-white/25"
+          role="slider"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(videoDuration)}
+          aria-valuenow={Math.round(videoTime)}
+          aria-valuetext={`${formatVideoTime(videoTime)} of ${formatVideoTime(videoDuration)}`}
           onMouseDown={handleSeekMouseDown}
           onMouseMove={handleSeekHover}
           onMouseLeave={handleSeekLeave}
         >
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-white/15"
+            className="absolute inset-y-0 left-0 rounded-full bg-white/25"
             style={{ width: `${buffered * 100}%` }}
           />
           <div
@@ -1334,11 +1347,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             )}
           </ControlButton>
 
-          <ControlButton onClick={skipBackward} tooltip="Back 10s (J)">
+          <ControlButton onClick={skipBackward} tooltip={`Back ${skipSeconds}s (J)`}>
             <CounterClockwise className="size-4" weight="bold" />
           </ControlButton>
 
-          <ControlButton onClick={skipForward} tooltip="Forward 10s (L)">
+          <ControlButton onClick={skipForward} tooltip={`Forward ${skipSeconds}s (L)`}>
             <Clockwise className="size-4" weight="bold" />
           </ControlButton>
 
@@ -1352,6 +1365,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             className="relative flex items-center"
             onMouseEnter={() => setShowVolumeSlider(true)}
             onMouseLeave={() => setShowVolumeSlider(false)}
+            onFocus={() => setShowVolumeSlider(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setShowVolumeSlider(false);
+            }}
           >
             <ControlButton onClick={toggleMute} tooltip={isMuted ? "Unmute (M)" : "Mute (M)"}>
               <VolumeIcon className="size-4" />
@@ -1364,6 +1381,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             >
               <input
                 type="range"
+                aria-label="Volume"
                 min={0}
                 max={1}
                 step={0.05}
@@ -1374,10 +1392,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             </div>
           </div>
 
-          <span className="ml-1 font-mono text-[11px] text-white/70 select-none">
+          <span className="ml-1 font-mono text-[11px] whitespace-nowrap text-white/90 select-none">
             {formatVideoTime(videoTime)}
             {videoDuration > 0 && (
-              <span className="text-white/40">
+              <span className="text-white/70">
                 {" / "}
                 {formatVideoTime(videoDuration)}
               </span>
@@ -1395,6 +1413,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
               }}
               tooltip="Playback speed"
               active={playbackSpeed !== 1}
+              expanded={showSpeedMenu}
             >
               {playbackSpeed !== 1 ? (
                 <span className="font-mono text-[11px] font-bold">{playbackSpeed}x</span>
@@ -1404,7 +1423,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
             </ControlButton>
             {showSpeedMenu && (
               <PopupMenu>
-                <p className="mb-1 px-2 font-sans text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                <p className="mb-1 px-2 font-sans text-[10px] font-semibold uppercase tracking-wider text-white/60">
                   Speed
                 </p>
                 {SPEED_OPTIONS.map((s) => (
@@ -1414,6 +1433,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                       e.stopPropagation();
                       changeSpeed(s);
                     }}
+                    aria-pressed={s === playbackSpeed}
                     className={cn(
                       "flex w-full items-center justify-between rounded px-2 py-1 font-mono text-xs transition-colors hover:bg-white/10",
                       s === playbackSpeed
@@ -1423,7 +1443,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                   >
                     {s}x
                     {s === 1 && (
-                      <span className="text-[10px] text-white/30">Normal</span>
+                      <span className="text-[10px] text-white/60">Normal</span>
                     )}
                   </button>
                 ))}
@@ -1444,6 +1464,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                 }}
                 tooltip="Subtitles (C)"
                 active={activeSubtitleIdx >= 0}
+                expanded={showSubtitleMenu}
               >
                 <Subtitles className="size-4" />
               </ControlButton>
@@ -1452,7 +1473,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                   {subMenuView === "tracks" ? (
                     <>
                       <div className="mb-1 flex items-center justify-between px-2">
-                        <p className="font-sans text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                        <p className="font-sans text-[10px] font-semibold uppercase tracking-wider text-white/60">
                           Subtitles
                         </p>
                         <button
@@ -1460,7 +1481,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                             e.stopPropagation();
                             setSubMenuView("settings");
                           }}
-                          className="rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                          aria-label="Subtitle style"
+                          title="Subtitle style"
+                          className="rounded p-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                         >
                           <GearSix className="size-3.5" />
                         </button>
@@ -1470,6 +1493,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                           e.stopPropagation();
                           selectSubtitle(-1);
                         }}
+                        aria-pressed={activeSubtitleIdx === -1}
                         className={cn(
                           "w-full rounded px-2 py-1 text-left font-sans text-xs transition-colors hover:bg-white/10",
                           activeSubtitleIdx === -1
@@ -1486,6 +1510,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                             e.stopPropagation();
                             selectSubtitle(i);
                           }}
+                          aria-pressed={activeSubtitleIdx === i}
                           className={cn(
                             "w-full rounded px-2 py-1 text-left font-sans text-xs transition-colors hover:bg-white/10",
                             activeSubtitleIdx === i
@@ -1505,11 +1530,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                             e.stopPropagation();
                             setSubMenuView("tracks");
                           }}
-                          className="font-sans text-xs text-white/50 transition-colors hover:text-white"
+                          aria-label="Back to subtitle tracks"
+                          title="Back"
+                          className="rounded px-1 font-sans text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                         >
                           &larr;
                         </button>
-                        <p className="font-sans text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                        <p className="font-sans text-[10px] font-semibold uppercase tracking-wider text-white/60">
                           Subtitle Style
                         </p>
                       </div>
@@ -1540,10 +1567,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
                               "size-5 rounded-full border-2 transition-all hover:scale-110",
                               subStyle.color === opt.value
                                 ? "border-primary scale-110"
-                                : "border-white/20 hover:border-white/40",
+                                : "border-white/30 hover:border-white/60",
                             )}
                             style={{ backgroundColor: opt.value }}
                             title={opt.label}
+                            aria-label={opt.label}
+                            aria-pressed={subStyle.color === opt.value}
                           />
                         ))}
                       </SubSettingRow>
@@ -1616,20 +1645,24 @@ function ControlButton({
   onClick,
   tooltip,
   active,
+  expanded,
   children,
 }: {
   onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   tooltip?: string;
   active?: boolean;
+  expanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       title={tooltip}
+      aria-label={tooltip}
+      aria-expanded={expanded}
       className={cn(
         "group/btn relative rounded-md p-1.5 transition-colors hover:bg-white/10",
-        active ? "text-primary" : "text-white/80 hover:text-white",
+        active ? "text-primary" : "text-white/90 hover:text-white",
       )}
     >
       {children}
@@ -1668,7 +1701,7 @@ function SubSettingRow({
 }) {
   return (
     <div className={cn(!last && "mb-2.5")}>
-      <p className="mb-1 px-2 font-sans text-[10px] font-medium text-white/35">
+      <p className="mb-1 px-2 font-sans text-[10px] font-medium text-white/60">
         {label}
       </p>
       <div className="flex items-center gap-1 px-1.5">{children}</div>
@@ -1688,11 +1721,12 @@ function SubSettingChip({
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "flex-1 rounded-md px-1 py-1 font-sans text-[10px] transition-colors hover:bg-white/10",
+        "flex-1 rounded-md px-1 py-1 font-sans text-[11px] transition-colors hover:bg-white/10",
         active
           ? "bg-white/10 font-semibold text-primary"
-          : "text-white/60",
+          : "text-white/80",
       )}
     >
       {label}

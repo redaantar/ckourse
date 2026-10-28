@@ -1,8 +1,7 @@
 import { PlusIcon as Plus } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { SquircleButton } from "@/components/ui/SquircleButton";
+import { Button } from "@/components/ui/button";
 import emptyAnimation from "@/assets/lotties/empty.json";
-import { EASE_OUT } from "@/lib/constants";
 import LottieLib from "lottie-react";
 
 // Handle CJS/ESM default export interop: in some Vite/Rollup build modes
@@ -19,30 +18,29 @@ export function EmptyLibrary({ onImport, className }: EmptyLibraryProps) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center py-24 text-center",
+        // Fill the inset content panel (window height minus its 8px margins) so the block sits dead center
+        "flex min-h-[calc(100dvh-1rem)] flex-col items-center justify-center py-12 text-center",
         className
       )}
-      style={{
-        animation: `card-in 500ms ${EASE_OUT} both`,
-      }}
     >
-      <div className="-mb-32 size-90">
+      {/* Match the animation's 231×95 canvas so no letterboxing pads it vertically */}
+      <div className="aspect-[231/95] w-90 max-w-full" aria-hidden="true">
         <Lottie animationData={emptyAnimation} loop />
       </div>
 
-      <h3 className="font-heading text-xl font-bold text-foreground">
-        No courses yet
+      <h3 className="mt-6 font-heading text-2xl font-semibold text-foreground">
+        Your library is waiting
       </h3>
-      <p className="mt-2 max-w-xs font-sans text-sm text-muted-foreground">
-        Import a course folder to start tracking your progress and pick up right
-        where you left off.
+      <p className="mt-2 max-w-sm font-sans text-sm text-balance text-muted-foreground">
+        Bring in a folder of videos and Ckourse turns it into a course, with
+        chapters, progress and notes, ready to pick up wherever you stop.
       </p>
 
       <div className="mt-6">
-        <SquircleButton variant="primary" onClick={onImport}>
+        <Button size="lg" onClick={onImport}>
           <Plus className="size-4" weight="bold" />
-          Import Course
-        </SquircleButton>
+          Add your first course
+        </Button>
       </div>
     </div>
   );

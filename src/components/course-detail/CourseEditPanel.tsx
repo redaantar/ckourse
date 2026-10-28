@@ -9,10 +9,13 @@ import {
   FolderOpenIcon as FolderOpen,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { SquircleButton } from "@/components/ui/SquircleButton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { EASE_OUT, SNAPPY } from "@/lib/constants";
 import type { CourseCategory, Course } from "@/types";
 import { getCustomCategories, addCustomCategory, deleteCustomCategory } from "@/lib/store";
+import { CourseColorPicker } from "@/components/ui/course-color-picker";
+import { CourseCover } from "@/components/dashboard/CourseCover";
 
 const builtinCategories: { value: CourseCategory; label: string }[] = [
   { value: "frontend", label: "Frontend" },
@@ -21,21 +24,6 @@ const builtinCategories: { value: CourseCategory; label: string }[] = [
   { value: "database", label: "Database" },
   { value: "design", label: "Design" },
   { value: "other", label: "Other" },
-];
-
-const accentColors = [
-  "#61DAFB",
-  "#F74C00",
-  "#8B5CF6",
-  "#3178C6",
-  "#2496ED",
-  "#336791",
-  "#E44D26",
-  "#38BDF8",
-  "#10B981",
-  "#F59E0B",
-  "#EC4899",
-  "#C8F135",
 ];
 
 interface CourseEditPanelProps {
@@ -101,7 +89,7 @@ export function CourseEditPanel({
   };
 
   return (
-    <div className={cn("mx-auto max-w-3xl", className)}>
+    <div className={cn("mx-auto w-full max-w-[1100px] px-6 pt-10 pb-20 lg:px-10", className)}>
       <div
         className="mb-4"
         style={{
@@ -112,10 +100,10 @@ export function CourseEditPanel({
       >
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="-ml-2 inline-flex h-8 items-center gap-1 rounded-full pr-3 pl-2 font-sans text-[13px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />
-          Back to Course
+          {course.title.length > 40 ? "Back to course" : course.title}
         </button>
       </div>
 
@@ -127,11 +115,11 @@ export function CourseEditPanel({
           transition: `opacity 600ms ${EASE_OUT} 40ms, transform 600ms ${EASE_OUT} 40ms`,
         }}
       >
-        <h2 className="font-heading text-2xl font-bold text-foreground">
-          Edit Course
+        <h2 className="font-heading text-[34px] leading-tight font-semibold text-foreground">
+          Course settings
         </h2>
-        <p className="mt-2 font-sans text-sm text-muted-foreground">
-          Update course details or manage progress and data.
+        <p className="mt-1 font-sans text-[15px] text-muted-foreground">
+          How this course appears in your library, and what happens to its progress.
         </p>
       </div>
 
@@ -143,15 +131,11 @@ export function CourseEditPanel({
           transition: `opacity 600ms ${EASE_OUT} 80ms, transform 600ms ${EASE_OUT} 80ms`,
         }}
       >
-        <div className="group relative">
-          <div className="squircle-subtle absolute inset-0 bg-border" />
-          <div className="squircle-subtle absolute inset-px bg-card" />
-          <div className="relative flex items-center gap-3 px-4 py-3">
-            <FolderOpen className="size-4 shrink-0 text-primary" />
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {course.folderPath}
-            </span>
-          </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card shadow-card px-4 py-3">
+          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-mono text-xs text-muted-foreground select-text" title={course.folderPath}>
+            {course.folderPath}
+          </span>
         </div>
       </div>
 
@@ -164,27 +148,34 @@ export function CourseEditPanel({
             transition: `opacity 600ms ${EASE_OUT} 120ms, transform 600ms ${EASE_OUT} 120ms`,
           }}
         >
-          <h3 className="font-heading text-base font-bold text-foreground">
-            Course Details
+          <h3 className="font-heading text-[17px] font-semibold text-foreground">
+            Details
           </h3>
 
+          {/* Live preview: the cover as it will sit on your shelf */}
+          <CourseCover
+            title={title.trim() || "Untitled course"}
+            author={author.trim()}
+            accentColor={accentColor}
+            className="aspect-[16/10] w-full max-w-72 rounded-2xl shadow-card"
+          />
+
           <FieldGroup label="Title">
-            <input
+            <Input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Course title"
-              className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              aria-invalid={!title.trim() || undefined}
             />
           </FieldGroup>
 
           <FieldGroup label="Author">
-            <input
+            <Input
               type="text"
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="Instructor name"
-              className="w-full bg-transparent font-sans text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
             />
           </FieldGroup>
 
@@ -196,37 +187,31 @@ export function CourseEditPanel({
           />
 
           <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground">
+            <span id="accent-color-label" className="flex items-center gap-1.5 font-sans text-xs font-medium text-muted-foreground">
               <Palette className="size-3.5" />
-              Accent Color
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {accentColors.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setAccentColor(color)}
-                  className={cn(
-                    "size-7 rounded-full border-2 transition-transform duration-150",
-                    accentColor === color
-                      ? "scale-110 border-foreground"
-                      : "border-transparent hover:scale-105",
-                  )}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-            </div>
+              Color
+            </span>
+            <CourseColorPicker
+              value={accentColor}
+              onChange={setAccentColor}
+              labelledBy="accent-color-label"
+              className="max-w-sm"
+            />
           </div>
 
           <div className="flex items-center gap-3 pt-2">
-            <SquircleButton
-              variant="primary"
+            <Button
               onClick={handleSave}
               disabled={!title.trim() || !hasChanges || saving}
             >
               <FloppyDisk className="size-4" weight="bold" />
-              {saving ? "Saving..." : "Save Changes"}
-            </SquircleButton>
-            {hasChanges && (
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+            {!title.trim() ? (
+              <span className="font-sans text-xs text-destructive">
+                Title is required
+              </span>
+            ) : hasChanges && (
               <span className="font-sans text-xs text-muted-foreground">
                 Unsaved changes
               </span>
@@ -242,75 +227,73 @@ export function CourseEditPanel({
             transition: `opacity 600ms ${EASE_OUT} 160ms, transform 600ms ${EASE_OUT} 160ms`,
           }}
         >
-          <h3 className="font-heading text-base font-bold text-foreground">
-            Manage
+          <h3 className="font-heading text-[17px] font-semibold text-foreground">
+            Progress and data
           </h3>
 
-          <div className="rounded-xl border border-border bg-card p-4">
+          <div className="rounded-2xl border border-border bg-card shadow-card p-4">
             <div className="flex items-start gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-info/10">
-                <ArrowCounterClockwise className="size-4 text-info" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                <ArrowCounterClockwise className="size-4 text-foreground" />
               </div>
               <div className="flex-1">
                 <p className="font-sans text-sm font-medium text-foreground">
-                  Reset Progress
+                  Start over
                 </p>
                 <p className="mt-0.5 font-sans text-xs text-muted-foreground">
                   Mark all lessons as incomplete and clear watch history.
                 </p>
                 {!confirmReset ? (
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setConfirmReset(true)}
-                    className="mt-3 rounded-md border border-border px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                    style={{ transitionTimingFunction: SNAPPY }}
+                    className="mt-3"
                   >
-                    Reset Progress
-                  </button>
+                    Reset progress
+                  </Button>
                 ) : (
                   <div className="mt-3 flex items-center gap-2">
-                    <button
+                    <Button
+                      size="sm"
                       onClick={handleResetProgress}
-                      className="rounded-md bg-info/15 px-3 py-1.5 font-sans text-xs font-medium text-info transition-colors hover:bg-info/25"
-                      style={{ transitionTimingFunction: SNAPPY }}
                     >
-                      Confirm Reset
-                    </button>
-                    <button
-                      onClick={() => setConfirmReset(false)}
-                      className="rounded-md px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                    >
+                      Reset all lessons
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <div className="rounded-2xl border border-destructive/25 bg-card p-4 shadow-card">
             <div className="flex items-start gap-3">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
                 <Trash className="size-4 text-destructive" />
               </div>
               <div className="flex-1">
                 <p className="font-sans text-sm font-medium text-foreground">
-                  Delete Course
+                  Remove from library
                 </p>
                 <p className="mt-0.5 font-sans text-xs text-muted-foreground">
                   Remove this course from your library. Your files on disk won't
                   be affected.
                 </p>
                 {!confirmDelete ? (
-                  <button
+                  <Button
+                    variant="destructive-outline"
+                    size="sm"
                     onClick={() => setConfirmDelete(true)}
-                    className="mt-3 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-1.5 font-sans text-xs font-medium text-destructive transition-colors hover:bg-destructive/20"
-                    style={{ transitionTimingFunction: SNAPPY }}
+                    className="mt-3"
                   >
-                    Delete Course
-                  </button>
+                    Remove course
+                  </Button>
                 ) : (
                   <div className="mt-3">
-                    <div className="mb-3 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2">
+                    <div role="alert" className="mb-3 flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2">
                       <Warning
                         className="size-3.5 shrink-0 text-destructive"
                         weight="bold"
@@ -321,19 +304,12 @@ export function CourseEditPanel({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleDelete}
-                        className="rounded-md bg-destructive px-3 py-1.5 font-sans text-xs font-medium text-white transition-colors hover:bg-destructive/90"
-                        style={{ transitionTimingFunction: SNAPPY }}
-                      >
-                        Yes, Delete
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(false)}
-                        className="rounded-md px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                      >
+                      <Button variant="destructive" size="sm" onClick={handleDelete}>
+                        Remove for good
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -390,19 +366,20 @@ function CategoryPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="font-sans text-xs font-medium text-muted-foreground">
+      <span id="category-label" className="font-sans text-xs font-medium text-muted-foreground">
         Category
-      </label>
-      <div className="flex flex-wrap gap-1.5">
+      </span>
+      <div role="group" aria-labelledby="category-label" className="flex flex-wrap gap-1.5">
         {builtinCategories.map((cat) => (
           <button
             key={cat.value}
             onClick={() => onCategoryChange(cat.value)}
+            aria-pressed={category === cat.value}
             className={cn(
               "rounded-full border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
               category === cat.value
-                ? "border-primary/25 bg-primary/15 text-primary"
-                : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                ? "border-transparent bg-foreground text-background"
+                : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
             style={{ transitionTimingFunction: SNAPPY }}
           >
@@ -415,15 +392,17 @@ function CategoryPicker({
             className={cn(
               "group flex items-center gap-1 rounded-full border pl-3 pr-1.5 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
               category === name
-                ? "border-primary/25 bg-primary/15 text-primary"
-                : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                ? "border-transparent bg-foreground text-background"
+                : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
             style={{ transitionTimingFunction: SNAPPY }}
           >
-            <button onClick={() => onCategoryChange(name)}>{name}</button>
+            <button onClick={() => onCategoryChange(name)} aria-pressed={category === name}>{name}</button>
             <button
               onClick={() => handleDelete(name)}
-              className="flex items-center justify-center rounded-full p-0.5 opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100"
+              aria-label={`Delete category ${name}`}
+              title={`Delete category ${name}`}
+              className="flex items-center justify-center rounded-full p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 group-hover:opacity-100 focus-visible:opacity-100"
             >
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                 <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -432,7 +411,7 @@ function CategoryPicker({
           </div>
         ))}
         {adding ? (
-          <div className="flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 pl-3 pr-1.5 py-1.5">
+          <div className="flex items-center gap-1 rounded-full border border-input bg-card pl-3 pr-1.5 py-1.5">
             <input
               ref={inputRef}
               value={newName}
@@ -442,12 +421,15 @@ function CategoryPicker({
                 if (e.key === "Escape") { setAdding(false); setNewName(""); }
               }}
               placeholder="Category name"
-              className="w-24 bg-transparent font-sans text-xs text-primary placeholder:text-primary/50 focus:outline-none"
+              aria-label="New category name"
+              className="w-24 bg-transparent font-sans text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={handleAdd}
-              className="flex items-center justify-center rounded-full p-1 text-primary transition-colors hover:bg-primary/20"
+              aria-label="Add category"
+              title="Add category"
+              className="flex items-center justify-center rounded-full p-1 text-foreground transition-colors hover:bg-secondary"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -456,7 +438,9 @@ function CategoryPicker({
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { setAdding(false); setNewName(""); }}
-              className="flex items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:bg-black/10"
+              aria-label="Cancel"
+              title="Cancel"
+              className="flex items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/10"
             >
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                 <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -466,7 +450,7 @@ function CategoryPicker({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="rounded-full border border-dashed border-border/50 px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-primary/25 hover:text-primary"
+            className="rounded-full border border-dashed border-input px-3 py-1.5 font-sans text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-input hover:text-foreground"
             style={{ transitionTimingFunction: SNAPPY }}
           >
             + Custom
@@ -485,15 +469,11 @@ function FieldGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="font-sans text-xs font-medium text-muted-foreground">
+    <label className="flex flex-col gap-2">
+      <span className="font-sans text-xs font-medium text-muted-foreground">
         {label}
-      </label>
-      <div className="group/field relative">
-        <div className="squircle absolute inset-0 bg-border/25 transition-colors group-focus-within/field:bg-primary" />
-        <div className="squircle absolute inset-px bg-card" />
-        <div className="relative px-4 py-2.5">{children}</div>
-      </div>
-    </div>
+      </span>
+      {children}
+    </label>
   );
 }

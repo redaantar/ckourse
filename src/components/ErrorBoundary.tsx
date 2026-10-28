@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import posthog from "posthog-js";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   children: ReactNode;
@@ -23,8 +24,14 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex h-screen items-center justify-center">
-          <p className="text-muted-foreground text-sm">Something went wrong.</p>
+        <div role="alert" className="flex h-screen flex-col items-center justify-center gap-3 bg-background">
+          <p className="font-heading text-xl font-semibold text-foreground">Ckourse hit a snag</p>
+          <p className="max-w-sm text-center font-sans text-sm text-muted-foreground">
+            Your courses, progress and notes are safe. We've reported the problem; reloading usually clears it.
+          </p>
+          <Button className="mt-3" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
         </div>
       );
     }

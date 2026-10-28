@@ -1,21 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@500&display=swap');
-
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Theme switches crossfade: a quick dissolve reads as "the light changed", not "the page reloaded" */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation: none;
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
   mix-blend-mode: normal;
 }
 
-@custom-variant dark (&:is(.dark *));
+/* Dark is the default theme; light mode is opted into with .light on <html> */
+@custom-variant dark (&:where(:root:not(.light), :root:not(.light) *));
+@custom-variant light (&:where(.light, .light *));
 
 @theme inline {
-    --font-sans: 'DM Sans', sans-serif;
-    --font-heading: 'Syne', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    /* Bundled (see main.tsx), not fetched: the app works offline and never pings a font CDN */
+    --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+    --ease-spring: var(--spring-smooth);
+    --ease-spring-snappy: var(--spring-snappy);
+    --ease-spring-bouncy: var(--spring-bouncy);
+    --shadow-card: var(--card-shadow);
+    --shadow-pop: var(--pop-shadow);
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
@@ -38,6 +46,7 @@
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
@@ -56,96 +65,135 @@
     --color-sidebar-ring: var(--sidebar-ring);
     --color-info: var(--info);
     --color-success: var(--success);
+    --color-warning: var(--warning);
 }
 
+/*
+ * Neutrals follow Apple's system grays; color comes from a single lime accent (the logo's)
+ * and from each course's own cover. Primary *buttons* are inverted neutrals
+ * (see button.tsx) — the accent is for progress, selection and small highlights.
+ *
+ * Lime means "you did this". It sits at ~555nm, the peak of the eye's photopic
+ * sensitivity, so a few pixels of it read louder than any other hue — which is
+ * why it is rationed to the learner's own progress. The grays carry a faint tint
+ * at hue ≈286°, near lime's complement, so simultaneous contrast makes the lime
+ * look more vivid without adding any chroma to it. See BRAND.md.
+ */
 :root {
-    --radius: 0.625rem;
-    /* Backgrounds */
-    --background: #0A0A0A;
-    --foreground: #EDEDED;
-    --card: #111214;
-    --card-foreground: #EDEDED;
-    --popover: #1A1C1F;
-    --popover-foreground: #EDEDED;
-    /* Accent — Electric Lime */
-    --primary: #C8F135;
-    --primary-foreground: #0A0A0A;
-    /* Secondary */
-    --secondary: #1A1C1F;
-    --secondary-foreground: #EDEDED;
-    /* Muted */
-    --muted: #111214;
-    --muted-foreground: #7A7D85;
-    /* Accent */
-    --accent: #C8F135;
-    --accent-foreground: #0A0A0A;
-    /* Status */
-    --destructive: #FF6B6B;
-    --info: #5B9CF6;
-    --success: #C8F135;
-    /* Border / Input / Ring */
-    --border: #252729;
-    --input: #252729;
-    --ring: #C8F135;
-    /* Charts */
-    --chart-1: #C8F135;
-    --chart-2: #5B9CF6;
-    --chart-3: #FF6B6B;
-    --chart-4: #A8CC1A;
-    --chart-5: #7A7D85;
-    /* Sidebar */
-    --sidebar: #111214;
-    --sidebar-foreground: #EDEDED;
-    --sidebar-primary: #C8F135;
-    --sidebar-primary-foreground: #0A0A0A;
-    --sidebar-accent: #1A1C1F;
-    --sidebar-accent-foreground: #EDEDED;
-    --sidebar-border: #252729;
-    --sidebar-ring: #C8F135;
-    --gradient-spot: rgba(200, 241, 53, 0.10);
+    --radius: 0.75rem;
+    /* Lime used as text/icon color. Same hue as --primary, darker where needed for 4.5:1 */
+    --primary-ink: #CDF426;
+
+    /*
+     * Springs, not curves. Sampled from a damped harmonic oscillator, SwiftUI-style
+     * spring(response, bounce) — so motion has mass and comes to rest the way objects do.
+     * Each one is only correct at its own settle duration: pair them exactly.
+     *   smooth  response .50, bounce 0    → 680ms, no overshoot (progress, layout: never overstate)
+     *   snappy  response .40, bounce .15  → 520ms, 0.6% overshoot (controls, toggles)
+     *   bouncy  response .50, bounce .30  → 730ms, 4.6% overshoot (earned moments only)
+     */
+    --spring-smooth: linear(0, 0.03, 0.101, 0.192, 0.289, 0.386, 0.476, 0.557, 0.63, 0.692, 0.746, 0.791, 0.829, 0.861, 0.887, 0.909, 0.926, 0.941, 0.953, 0.962, 0.97, 0.976, 0.981, 0.985, 0.988, 0.99, 0.992, 0.994, 0.995, 0.996, 0.997, 0.998, 1);
+    --spring-snappy: linear(0, 0.028, 0.098, 0.19, 0.292, 0.396, 0.495, 0.585, 0.666, 0.736, 0.795, 0.844, 0.884, 0.916, 0.941, 0.96, 0.975, 0.986, 0.994, 0.999, 1.003, 1.005, 1.006, 1.006, 1.006, 1.006, 1.005, 1.005, 1.004, 1.003, 1.003, 1.002, 1);
+    --spring-bouncy: linear(0, 0.036, 0.125, 0.243, 0.373, 0.502, 0.622, 0.728, 0.817, 0.889, 0.945, 0.986, 1.014, 1.032, 1.042, 1.046, 1.045, 1.042, 1.037, 1.031, 1.025, 1.019, 1.014, 1.01, 1.006, 1.003, 1.001, 1, 0.999, 0.998, 0.998, 0.998, 1);
+
+    --background: #121214;
+    --foreground: #F5F5F7;
+    --card: #1A1A1D;
+    --card-foreground: #F5F5F7;
+    --popover: #222225;
+    --popover-foreground: #F5F5F7;
+    --primary: #CDF426;
+    --primary-foreground: #0B0B0D;
+    --secondary: #222225;
+    --secondary-foreground: #F5F5F7;
+    --muted: #1A1A1D;
+    --muted-foreground: #98989F;
+    /* Neutral hover surface (shadcn ghost/outline hovers) — not the brand color */
+    --accent: #2A2A2E;
+    --accent-foreground: #F5F5F7;
+    --destructive: #FF6961;
+    --destructive-foreground: #0B0A14;
+    --info: #64B5FF;
+    --success: #4ADE80;
+    --warning: #FFB340;
+    --border: #2A2A2D;
+    --input: #3A3A3E;
+    --ring: #CDF426;
+    --chart-1: #CDF426;
+    --chart-2: #64B5FF;
+    --chart-3: #FF6961;
+    --chart-4: #4ADE80;
+    --chart-5: #98989F;
+    --sidebar: #0C0C0E;
+    --sidebar-foreground: #F5F5F7;
+    --sidebar-primary: #CDF426;
+    --sidebar-primary-foreground: #0B0B0D;
+    --sidebar-accent: #1E1E21;
+    --sidebar-accent-foreground: #F5F5F7;
+    --sidebar-border: #1E1E21;
+    --sidebar-ring: #CDF426;
+    --card-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+    --pop-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 20px 40px -12px rgb(0 0 0 / 0.6);
 }
 
 .light {
-    --background: #F5F5F5;
-    --foreground: #1A1A1A;
+    --background: #F7F7F8;
+    --foreground: #1D1D1F;
     --card: #FFFFFF;
-    --card-foreground: #1A1A1A;
+    --card-foreground: #1D1D1F;
     --popover: #FFFFFF;
-    --popover-foreground: #1A1A1A;
-    --primary: #8AB400;
-    --primary-foreground: #FFFFFF;
-    --secondary: #E8E8E8;
-    --secondary-foreground: #1A1A1A;
-    --muted: #F0F0F0;
-    --muted-foreground: #6B6E76;
-    --accent: #8AB400;
-    --accent-foreground: #FFFFFF;
-    --destructive: #E54D4D;
-    --info: #4A87E0;
-    --success: #8AB400;
-    --border: #D9DBDF;
-    --input: #D9DBDF;
-    --ring: #8AB400;
-    --chart-1: #8AB400;
-    --chart-2: #4A87E0;
-    --chart-3: #E54D4D;
-    --chart-4: #6E9900;
-    --chart-5: #6B6E76;
-    --sidebar: #FFFFFF;
-    --sidebar-foreground: #1A1A1A;
-    --sidebar-primary: #8AB400;
-    --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: #F0F0F0;
-    --sidebar-accent-foreground: #1A1A1A;
-    --sidebar-border: #D9DBDF;
-    --sidebar-ring: #8AB400;
-    --gradient-spot: rgba(138, 180, 0, 0.07);
+    --popover-foreground: #1D1D1F;
+    /* oklch(80% 0.2 124): the logo lime nearly vanishes on white (1.3:1, and 1.04:1 against the
+       empty track) — one step deeper keeps it unmistakably chartreuse while fills read as solid */
+    --primary: #A4D104;
+    --primary-foreground: #0B0B0D;
+    /* oklch(48.5% 0.122 125): the lime's own hue at a lightness that clears 6:1 on white */
+    --primary-ink: #4F6A00;
+    --secondary: #EFEFF2;
+    --secondary-foreground: #1D1D1F;
+    --muted: #F2F2F4;
+    --muted-foreground: #6A6A70;
+    --accent: #E6E6EA;
+    --accent-foreground: #1D1D1F;
+    --destructive: #D70015;
+    --destructive-foreground: #FFFFFF;
+    --info: #0066CC;
+    --success: #1F8A3B;
+    --warning: #A85A00;
+    --border: #E5E5E9;
+    --input: #D2D2D7;
+    --ring: #5E7A00;
+    --chart-1: #A4D104;
+    --chart-2: #0066CC;
+    --chart-3: #D70015;
+    --chart-4: #1F8A3B;
+    --chart-5: #6A6A70;
+    --sidebar: #EEEEF1;
+    --sidebar-foreground: #1D1D1F;
+    --sidebar-primary: #A4D104;
+    --sidebar-primary-foreground: #0B0B0D;
+    --sidebar-accent: #E2E2E7;
+    --sidebar-accent-foreground: #1D1D1F;
+    --sidebar-border: #E2E2E7;
+    --sidebar-ring: #5E7A00;
+    --card-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.02);
+    --pop-shadow: 0 0 0 1px rgb(0 0 0 / 0.05), 0 20px 40px -12px rgb(0 0 0 / 0.16);
+}
+
+/*
+ * Light theme: lime fills (progress, toggles, pills) stay bright, but lime *text*
+ * would be ~1.3:1 on white — text-primary is deepened to an olive of the same hue.
+ */
+.light .text-primary,
+.light .text-sidebar-primary,
+.light .hover\:text-primary:hover {
+    color: var(--primary-ink);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-color: var(--muted-foreground) transparent;
+    scrollbar-color: var(--input) transparent;
     scrollbar-width: thin;
     user-select: none;
     -webkit-user-select: none;
@@ -158,35 +206,43 @@
     background: transparent;
     }
   ::-webkit-scrollbar-thumb {
-    background: var(--muted-foreground);
+    background: var(--input);
     border-radius: 3px;
     }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--foreground);
+    background: var(--muted-foreground);
     }
   ::-webkit-scrollbar-corner {
     background: transparent;
     }
   html {
-    background-color: #0A0A0A;
+    background-color: #0C0C0E;
     }
   html.light {
-    background-color: #F5F5F5;
+    background-color: #EEEEF1;
+    }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
+    }
+  /* Headings get optical tightening; utilities (tracking-*) still win. */
+  .font-heading {
+    letter-spacing: -0.025em;
+    }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+    }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
     }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-sidebar text-foreground font-sans antialiased;
     font-weight: 400;
+    font-feature-settings: "ss01" 1, "cv11" 1;
     }
-}
-
-/* Squircle (iOS-style superellipse) */
-.squircle {
-  clip-path: url(#squircle);
-}
-
-/* Subtle squircle — less rounded, for cards and wider elements */
-.squircle-subtle {
-  clip-path: url(#squircle-subtle);
 }
 
 /* Apple-style spring easing */
@@ -204,7 +260,7 @@
   content: attr(data-placeholder);
   pointer-events: none;
   color: var(--muted-foreground);
-  opacity: 0.4;
+  opacity: 0.75;
 }
 
 /* Rich note content styles */
@@ -220,8 +276,9 @@
   padding: 0 5px;
   margin: 0 2px;
   border-radius: 4px;
-  background: var(--primary);
-  color: var(--primary-foreground);
+  /* Neutral: a timestamp is a link to a moment, not progress — lime stays reserved */
+  background: var(--accent);
+  color: var(--foreground);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
@@ -232,14 +289,76 @@
   -webkit-user-select: none;
 }
 
+.note-timestamp {
+  transition: background-color 150ms, color 150ms;
+}
+
+.note-timestamp[role="button"]:hover {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* Search matches inside notes: a highlighter stroke, not lime (lime means progress) */
+.note-content mark {
+  background: color-mix(in oklab, var(--warning) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Lesson checkmark: lands with a little mass when the learner finishes something */
+@keyframes check-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.check-pop {
+  animation: check-pop 730ms var(--spring-bouncy) both;
+}
+
 /* Card entrance animation */
 @keyframes card-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.97);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
+  }
+}
+
+/* Empty-state illustration: back cards fan out from behind the front card */
+@keyframes empty-fan {
+  from {
+    opacity: 0;
+    transform: translateX(0) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(var(--fan-x)) rotate(var(--fan-r));
+  }
+}
+
+/*
+ * Reduced motion: keep every state change, drop the travel. Vestibular disorders
+ * are triggered by movement, not by change — so fades survive, slides and springs don't.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }

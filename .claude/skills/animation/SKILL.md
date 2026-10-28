@@ -20,6 +20,24 @@ Ckourse follows Apple's Human Interface Guidelines for motion:
 
 ---
 
+## Springs (preferred)
+
+`src/index.css` defines physical springs sampled from a damped oscillator as CSS `linear()` easings. Use the constants from `@/lib/constants`; they include the matching duration, because a spring curve is only correct at its own settle time:
+
+| Constant | Value | Use |
+|---|---|---|
+| `SPRING_SMOOTH` | `680ms var(--spring-smooth)` | Progress fills, layout, sidebar. No overshoot: progress must never show more than was earned |
+| `SPRING_SNAPPY` | `520ms var(--spring-snappy)` | Controls, toggles |
+| `SPRING_BOUNCY` | `730ms var(--spring-bouncy)` | Earned moments only (lesson check `check-pop`, course complete) |
+
+```tsx
+style={{ transition: `width ${SPRING_SMOOTH}` }}
+```
+
+Tailwind: `ease-spring`, `ease-spring-snappy`, `ease-spring-bouncy` (set the duration to match).
+
+Reduced motion is handled globally in `index.css`: all transitions and animations complete instantly. Canvas/JS animations must check `prefers-reduced-motion` themselves (see `CourseCelebration`). JS physics must integrate against elapsed time (`dt`), never per frame: ProMotion displays run at 120 Hz.
+
 ## Easing Curves
 
 All curves are defined in `src/index.css` via the `.ease-apple` utility class and used inline when combining multiple transition properties.
@@ -220,58 +238,6 @@ Animate `width` with Apple Spring. Add a slight delay so the container renders f
 
 ---
 
-## Squircles
-
-Ckourse uses iOS-style squircle (superellipse) shapes instead of standard `border-radius` for key interactive surfaces.
-
-### Setup
-
-An SVG `<clipPath>` is defined once at the root level (in `Sidebar.tsx` or a layout component):
-
-```tsx
-<svg width="0" height="0" className="absolute">
-  <defs>
-    <clipPath id="squircle" clipPathUnits="objectBoundingBox">
-      <path d="M 0.5,0 C 0.78,0 0.93,0 0.967,0.033 C 1,0.07 1,0.22 1,0.5 C 1,0.78 1,0.93 0.967,0.967 C 0.93,1 0.78,1 0.5,1 C 0.22,1 0.07,1 0.033,0.967 C 0,0.93 0,0.78 0,0.5 C 0,0.22 0,0.07 0.033,0.033 C 0.07,0 0.22,0 0.5,0 Z" />
-    </clipPath>
-  </defs>
-</svg>
-```
-
-### CSS utility in `src/index.css`
-
-```css
-.squircle {
-  clip-path: url(#squircle);
-}
-```
-
-### Where to apply squircles
-
-| Element | Use squircle? |
-|---|---|
-| Nav button backgrounds | Yes |
-| Sidebar toggle button | Yes |
-| Search bar | Yes |
-| Tooltips | Yes |
-| Icon containers (collapsed nav) | Yes |
-| Cards | No — use standard `rounded-xl` |
-| Badges | No — use standard `rounded-full` |
-| Page-level containers | No — use standard `rounded-xl` |
-| Modals / dialogs | Optional — can use for the dialog surface |
-
-### Usage
-
-```tsx
-// Apply squircle shape
-<div className="squircle bg-sidebar-accent p-3">
-
-// Combine with transitions
-<div className="squircle transition-colors duration-150 hover:bg-sidebar-accent">
-```
-
----
-
 ## GPU Acceleration Hints
 
 Use `will-change` for properties that animate frequently. Remove it when animation is idle if needed.
@@ -295,7 +261,7 @@ Do not apply `will-change` globally or to many elements — it reserves composit
 | Linear easing (`ease`, `linear`) | Use the Apple curves above |
 | `setTimeout` to sequence animations | Use `transition-delay` or staggered delays |
 | Animating `left`/`top` | Use `transform: translate()` (GPU-composited) |
-| Animating `display: none` to `block` | Use `opacity: 0` + `pointer-events: none` |
+| Animating `display: none` to `block` | Use `opacity: 0` + `pointer-events: none` + `inert` (so hidden content isn't tabbable) |
 | `transform-origin` without thinking | Set it explicitly when using scale (e.g., dropdowns should scale from their anchor) |
 
 ---
@@ -307,6 +273,5 @@ Do not apply `will-change` globally or to many elements — it reserves composit
 - [ ] Animated content stays in DOM (no conditional rendering for transitions)
 - [ ] Stagger applied when multiple items animate together
 - [ ] `will-change` set only on frequently-animated elements
-- [ ] Squircle applied to interactive surfaces (nav buttons, tooltips, icon containers)
 - [ ] Hover states use `transition-colors` or Snappy curve for transforms
 - [ ] Transitions list specific properties (never `transition: all`)

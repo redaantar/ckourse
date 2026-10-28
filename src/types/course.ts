@@ -84,6 +84,8 @@ export interface NoteWithCourse {
   updatedAt: string;
   courseTitle: string;
   accentColor: string;
+  /** Empty when the lesson no longer exists */
+  videoPath: string;
 }
 
 export interface SearchResult {

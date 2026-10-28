@@ -1,23 +1,22 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { usePageVisible } from "@/hooks/usePageVisible";
 import {
   MagnifyingGlassIcon as MagnifyingGlass,
   PlusIcon as Plus,
-  FunnelIcon as Funnel,
-  SortAscendingIcon as SortAscending,
-  SpinnerGapIcon as SpinnerGap,
-  BookmarkSimpleIcon as BookmarkSimple,
+  CaretUpDownIcon as CaretUpDown,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CourseCard } from "@/components/dashboard/CourseCard";
-import { DashboardStatsBar } from "@/components/dashboard/DashboardStats";
+import { FeaturedCourse } from "@/components/dashboard/FeaturedCourse";
 import { EmptyLibrary } from "@/components/dashboard/EmptyLibrary";
-import { SquircleSearch } from "@/components/ui/SquircleSearch";
-import { SquircleButton } from "@/components/ui/SquircleButton";
+import { SearchInput } from "@/components/ui/search-input";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { Course, DashboardStats, CourseCategory, CourseStatus } from "@/types";
-import { getCourses, getDashboardStats } from "@/lib/store";
-import { EASE, EASE_OUT } from "@/lib/constants";
+import { byLastWatched, getCourses, getDashboardStats } from "@/lib/store";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Menu, MenuContent, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
 
 type SortOption = "recent" | "progress" | "title";
 
@@ -31,21 +30,42 @@ const builtinCategoryLabels: Record<CourseCategory | "all", string> = {
   other: "Other",
 };
 
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return "Up late";
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+/** One encouraging, true sentence — never a guilt trip. */
+function encouragement(stats: DashboardStats | null, inProgress: number): string {
+  if (stats && stats.currentStreak >= 2) return `${stats.currentStreak} days in a row. Keep the thread going.`;
+  if (stats && stats.currentStreak === 1) return "You learned something today.";
+  if (inProgress > 0) return `${inProgress} ${inProgress === 1 ? "course" : "courses"} in progress.`;
+  return "What will you learn today?";
+}
+
+/** The course most worth resuming: latest-watched unfinished one, else the first unfinished. */
+function pickFeatured(courses: Course[]): Course | null {
+  return byLastWatched(courses).find((c) => c.status !== "completed") ?? courses.find((c) => c.status !== "completed") ?? courses[0] ?? null;
+}
+
 function getCategoryLabel(cat: string): string {
   return builtinCategoryLabels[cat as CourseCategory | "all"] ?? cat;
 }
 
 const statusLabels: Record<CourseStatus | "all", string> = {
-  all: "All Status",
-  "in-progress": "In Progress",
+  all: "All",
+  "in-progress": "In progress",
+  "not-started": "Not started",
   completed: "Completed",
-  "not-started": "Not Started",
 };
 
 const sortLabels: Record<SortOption, string> = {
-  recent: "Recently Watched",
-  progress: "Progress",
-  title: "Title A-Z",
+  recent: "Recently watched",
+  progress: "Most progress",
+  title: "Title",
 };
 
 interface DashboardProps {
@@ -59,22 +79,18 @@ export function Dashboard({ className }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
-  const [filterHeight, setFilterHeight] = useState(0);
 
   // Derive filter state from URL search params
   const search = searchParams.get("q") ?? "";
   const category = (searchParams.get("cat") ?? "all") as CourseCategory | "all";
   const status = (searchParams.get("status") ?? "all") as CourseStatus | "all";
   const sort = (searchParams.get("sort") ?? "recent") as SortOption;
-  const showFilters = searchParams.get("filters") === "1";
-  const bookmarkFilter = searchParams.get("bm") === "1";
 
   const updateParam = useCallback(
     (key: string, value: string, remove?: boolean) => {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        if (remove || !value || value === "all" || value === "recent" || (key === "filters" && value === "0") || (key === "bm" && value === "0")) {
+        if (remove || !value || value === "all" || value === "recent") {
           next.delete(key);
         } else {
           next.set(key, value);
@@ -89,20 +105,6 @@ export function Dashboard({ className }: DashboardProps) {
   const setCategory = useCallback((v: CourseCategory | "all") => updateParam("cat", v), [updateParam]);
   const setStatus = useCallback((v: CourseStatus | "all") => updateParam("status", v), [updateParam]);
   const setSort = useCallback((v: SortOption) => updateParam("sort", v), [updateParam]);
-  const setShowFilters = useCallback(
-    (v: boolean | ((prev: boolean) => boolean)) => {
-      const next = typeof v === "function" ? v(showFilters) : v;
-      updateParam("filters", next ? "1" : "0");
-    },
-    [updateParam, showFilters],
-  );
-  const setBookmarkFilter = useCallback(
-    (v: boolean | ((prev: boolean) => boolean)) => {
-      const next = typeof v === "function" ? v(bookmarkFilter) : v;
-      updateParam("bm", next ? "1" : "0");
-    },
-    [updateParam, bookmarkFilter],
-  );
 
   const loadCourses = useCallback((showSpinner = false) => {
     if (showSpinner) setLoading(true);
@@ -120,14 +122,15 @@ export function Dashboard({ className }: DashboardProps) {
     loadCourses(true);
   }, [loadCourses]);
 
-  // Refresh data when page becomes visible again (keep-alive)
-  usePageVisible("/", () => loadCourses(true));
-
+  // The library's old "saved only" filter is the Saved page now
+  const legacyBookmarkFilter = searchParams.get("bm") === "1";
   useEffect(() => {
-    if (filterRef.current) {
-      setFilterHeight(filterRef.current.scrollHeight);
-    }
-  }, [showFilters, category, status]);
+    if (legacyBookmarkFilter) navigate("/bookmarks", { replace: true });
+  }, [legacyBookmarkFilter, navigate]);
+
+  // Refresh data when page becomes visible again (keep-alive)
+  // Silent refresh so returning to the page doesn't flash a spinner
+  usePageVisible("/", () => loadCourses());
 
   const filteredCourses = useMemo(() => {
     let result = courses;
@@ -147,10 +150,6 @@ export function Dashboard({ className }: DashboardProps) {
 
     if (status !== "all") {
       result = result.filter((c) => c.status === status);
-    }
-
-    if (bookmarkFilter) {
-      result = result.filter((c) => c.bookmarked);
     }
 
     result = [...result].sort((a, b) => {
@@ -174,203 +173,164 @@ export function Dashboard({ className }: DashboardProps) {
     });
 
     return result;
-  }, [courses, search, category, status, sort, bookmarkFilter]);
+  }, [courses, search, category, status, sort]);
 
   const availableCategories = useMemo(() => {
     const cats = new Set(courses.map((c) => c.category));
     return ["all" as const, ...Array.from(cats)] as (CourseCategory | "all")[];
   }, [courses]);
 
+  const featured = useMemo(() => pickFeatured(courses), [courses]);
+
   const handleImport = () => {
     navigate("/import");
   };
 
   if (loading) {
-    return (
-      <div className={cn("mx-auto flex max-w-6xl items-center justify-center py-32", className)}>
-        <SpinnerGap className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    // Hold the space quietly; a spinner for a local database read is mostly noise
+    return <div className={cn("min-h-[60vh]", className)} aria-busy="true" />;
   }
 
   if (loadError) {
     return (
-      <div className={cn("mx-auto flex max-w-6xl flex-col items-center justify-center gap-3 py-32", className)}>
-        <p className="font-sans text-sm text-muted-foreground">Failed to load your library.</p>
-        <button
-          onClick={() => loadCourses(true)}
-          className="font-sans text-xs font-medium text-primary transition-colors hover:text-primary/80"
-        >
-          Try again
-        </button>
+      <div className={cn("px-10", className)}>
+        <EmptyState
+          icon={MagnifyingGlass}
+          size="page"
+          title="Your library didn't load"
+          description="Nothing is lost — this is usually a hiccup reading the database."
+          action={
+            <Button variant="outline" size="sm" onClick={() => loadCourses(true)}>
+              Try again
+            </Button>
+          }
+        />
       </div>
     );
   }
 
   if (courses.length === 0) {
     return (
-      <div className={cn("mx-auto max-w-6xl", className)}>
+      <div className={cn("px-6 lg:px-10", className)}>
         <EmptyLibrary onImport={handleImport} />
       </div>
     );
   }
 
+  const inProgress = courses.filter((c) => c.status === "in-progress").length;
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
   return (
-    <div className={cn("mx-auto max-w-6xl", className)}>
-      {stats && <DashboardStatsBar stats={stats} className="mb-6" />}
-
-      <div className="mb-6 flex items-center gap-3">
-        <SquircleSearch
-          value={search}
-          onChange={setSearch}
-          placeholder="Search courses..."
-          className="flex-1"
-        />
-
-        <SquircleButton
-          variant="secondary"
-          active={showFilters}
-          onClick={() => setShowFilters((v) => !v)}
-        >
-          <Funnel
-            className="size-4"
-            style={{
-              transform: showFilters ? "rotate(180deg)" : "rotate(0deg)",
-              transition: `transform 500ms ${EASE}`,
-            }}
-          />
-          Filters
-        </SquircleButton>
-
-        <SquircleButton variant="primary" onClick={() => navigate("/import")}>
-          <Plus className="size-4" weight="bold" />
-          Import Course
-        </SquircleButton>
-      </div>
-
-      <div
-        ref={filterRef}
-        style={{
-          maxHeight: showFilters ? filterHeight : 0,
-          opacity: showFilters ? 1 : 0,
-          transform: showFilters ? "translateY(0)" : "translateY(-8px)",
-          transition: `max-height 350ms ${EASE}, opacity 350ms ${EASE}, transform 350ms ${EASE}`,
-          pointerEvents: showFilters ? "auto" : "none",
-        }}
-        className="overflow-hidden"
+    <div className={cn("mx-auto flex w-full max-w-[1400px] flex-col gap-12 px-6 pt-12 pb-20 lg:px-10", className)}>
+      <header
+        className="flex flex-wrap items-end justify-between gap-4"
       >
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            {availableCategories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
-                  category === cat
-                    ? "border-primary/25 bg-primary/15 text-primary"
-                    : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {getCategoryLabel(cat)}
-              </button>
-            ))}
-          </div>
-
-          <div className="h-5 w-px bg-border" />
-
-          <div className="flex items-center gap-1.5">
-            {(Object.keys(statusLabels) as (CourseStatus | "all")[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
-                  status === s
-                    ? "border-primary/25 bg-primary/15 text-primary"
-                    : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {statusLabels[s]}
-              </button>
-            ))}
-          </div>
-
-          <div className="h-5 w-px bg-border" />
-
-          <button
-            onClick={() => setBookmarkFilter((v) => !v)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-sans text-xs font-medium transition-colors duration-150",
-              bookmarkFilter
-                ? "border-primary/25 bg-primary/15 text-primary"
-                : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <BookmarkSimple className="size-3" weight={bookmarkFilter ? "fill" : "regular"} />
-            Bookmarked
-          </button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <SortAscending className="size-4 text-muted-foreground" />
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortOption)}
-              className="bg-transparent font-sans text-xs font-medium text-muted-foreground focus:outline-none"
-            >
-              {(Object.keys(sortLabels) as SortOption[]).map((s) => (
-                <option key={s} value={s}>
-                  {sortLabels[s]}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <p className="font-sans text-[13px] font-medium text-muted-foreground">{today}</p>
+          <h1 className="mt-1 font-heading text-[34px] leading-tight font-semibold text-foreground">{greeting()}</h1>
+          <p className="mt-1 font-sans text-[15px] text-muted-foreground">{encouragement(stats, inProgress)}</p>
         </div>
-      </div>
+        <Button onClick={handleImport}>
+          <Plus className="size-4" weight="bold" />
+          Add course
+        </Button>
+      </header>
 
-      <div className="mb-6 flex items-baseline justify-between">
-        <h2 className="font-heading text-2xl font-bold text-foreground">
-          Your Library
-        </h2>
-        <span className="font-mono text-sm font-medium text-muted-foreground">
-          {filteredCourses.length} {filteredCourses.length === 1 ? "course" : "courses"}
-        </span>
-      </div>
-
-      {filteredCourses.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredCourses.map((course, index) => (
-            <div
-              key={course.id}
-              style={{
-                animation: `card-in 350ms ${EASE_OUT} ${index * 50}ms both`,
-              }}
-            >
-              <CourseCard course={course} onBookmarkChange={loadCourses} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div
-          className="flex flex-col items-center justify-center gap-3 py-20 text-center"
-          style={{
-            animation: `card-in 350ms ${EASE_OUT} both`,
-          }}
-        >
-          <MagnifyingGlass className="size-10 text-muted-foreground/50" />
-          <p className="font-sans text-sm text-muted-foreground">
-            No courses match your filters.
-          </p>
-          <button
-            onClick={() => {
-              setSearchParams({}, { replace: true });
-            }}
-            className="font-sans text-xs font-medium text-primary transition-colors hover:text-primary/80"
-          >
-            Clear all filters
-          </button>
-        </div>
+      {featured && (
+        <section aria-label="Up next">
+          <FeaturedCourse course={featured} />
+        </section>
       )}
+
+      <section aria-labelledby="library-title" className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 id="library-title" className="mr-2 font-heading text-[22px] font-semibold text-foreground">
+            Library
+          </h2>
+          <SegmentedControl
+            aria-label="Filter by status"
+            value={status}
+            onChange={setStatus}
+            options={(Object.keys(statusLabels) as (CourseStatus | "all")[]).map((s) => ({
+              value: s,
+              label: statusLabels[s],
+            }))}
+          />
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {availableCategories.length > 2 && (
+              <Menu>
+                <MenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className={cn(category !== "all" && "bg-secondary text-foreground")}>
+                    {category === "all" ? "All topics" : getCategoryLabel(category)}
+                    <CaretUpDown className="size-3.5" />
+                  </Button>
+                </MenuTrigger>
+                <MenuContent>
+                  <MenuLabel>Topic</MenuLabel>
+                  <MenuRadioGroup value={category} onValueChange={(v) => setCategory(v as CourseCategory | "all")}>
+                    {availableCategories.map((cat) => (
+                      <MenuRadioItem key={cat} value={cat}>
+                        {cat === "all" ? "All topics" : getCategoryLabel(cat)}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuContent>
+              </Menu>
+            )}
+
+            <Menu>
+              <MenuTrigger asChild>
+                <Button variant="ghost" size="sm" aria-label={`Sort: ${sortLabels[sort]}`}>
+                  {sortLabels[sort]}
+                  <CaretUpDown className="size-3.5" />
+                </Button>
+              </MenuTrigger>
+              <MenuContent>
+                <MenuLabel>Sort by</MenuLabel>
+                <MenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortOption)}>
+                  {(Object.keys(sortLabels) as SortOption[]).map((s) => (
+                    <MenuRadioItem key={s} value={s}>
+                      {sortLabels[s]}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+                <MenuSeparator />
+                <MenuLabel>{courses.length} courses in your library</MenuLabel>
+              </MenuContent>
+            </Menu>
+
+            <SearchInput value={search} onChange={setSearch} placeholder="Search library" className="w-full sm:w-56" />
+          </div>
+        </div>
+
+        {filteredCourses.length > 0 ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-x-6 gap-y-8">
+            {filteredCourses.map((course) => (
+              <div key={course.id}>
+                <CourseCard course={course} onBookmarkChange={loadCourses} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={MagnifyingGlass}
+            title="Nothing matches"
+            description={search ? `No course matches "${search}" with these filters.` : "No courses match these filters."}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchParams({}, { replace: true });
+                }}
+              >
+                Show everything
+              </Button>
+            }
+          />
+        )}
+      </section>
     </div>
   );
 }

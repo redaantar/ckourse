@@ -97,6 +97,8 @@ pub struct NoteWithCourse {
     pub updated_at: String,
     pub course_title: String,
     pub accent_color: String,
+    /// Empty when the lesson no longer exists
+    pub video_path: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -707,9 +709,11 @@ pub fn delete_course(conn: &Connection, course_id: i64) -> SqlResult<()> {
 pub fn get_all_notes(conn: &Connection) -> SqlResult<Vec<NoteWithCourse>> {
     let mut stmt = conn.prepare(
         "SELECT n.id, n.course_id, n.lesson_id, n.lesson_title, n.content,
-                n.created_at, n.updated_at, c.title, c.accent_color
+                n.created_at, n.updated_at, c.title, c.accent_color,
+                COALESCE(l.video_path, '')
          FROM notes n
          JOIN courses c ON c.id = n.course_id
+         LEFT JOIN lessons l ON l.id = n.lesson_id
          ORDER BY n.updated_at DESC",
     )?;
 
@@ -725,6 +729,7 @@ pub fn get_all_notes(conn: &Connection) -> SqlResult<Vec<NoteWithCourse>> {
                 updated_at: row.get(6)?,
                 course_title: row.get(7)?,
                 accent_color: row.get(8)?,
+                video_path: row.get(9)?,
             })
         })?
         .collect::<SqlResult<Vec<_>>>()?;

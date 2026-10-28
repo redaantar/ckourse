@@ -41,29 +41,23 @@ export function SidebarButton({
     <a
       href={item.path}
       onClick={handleClick}
+      aria-current={isActive ? "page" : undefined}
+      aria-label={collapsed ? item.label : undefined}
       className={cn(
-        "group relative flex items-center py-2.5 font-sans text-sm",
-        collapsed ? "justify-center px-0" : "gap-3 px-3",
-        isActive
-          ? "font-semibold text-primary"
-          : "text-muted-foreground hover:text-sidebar-accent-foreground"
+        "group relative flex h-8 items-center rounded-lg font-sans text-[13px] transition-colors duration-150",
+        collapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
+        // Inside a course, the Recent row carries the highlight; the section just stays legible
+        isActive && isCourseRoute
+          ? "font-medium text-sidebar-foreground hover:bg-sidebar-accent/60"
+          : isActive
+          ? "bg-sidebar-accent font-medium text-sidebar-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       )}
     >
-      <div
-        className={cn(
-          "absolute inset-0 squircle transition-[background] duration-200",
-          isActive
-            ? "bg-primary/10"
-            : "bg-transparent group-hover:bg-sidebar-accent"
-        )}
-      />
-
-      <div className="relative z-10 shrink-0">
-        <Icon className="size-4" />
-      </div>
+      <Icon className="size-[18px] shrink-0" weight={isActive ? "fill" : "regular"} />
 
       <span
-        className="relative z-10 overflow-hidden whitespace-nowrap"
+        className="overflow-hidden whitespace-nowrap"
         style={{
           opacity: collapsed ? 0 : 1,
           maxWidth: collapsed ? 0 : 160,
@@ -74,11 +68,19 @@ export function SidebarButton({
         {item.label}
       </span>
 
-      {collapsed && (
-        <span className="squircle pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap bg-popover px-3 py-1.5 font-sans text-xs font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0 -translate-x-1">
-          {item.label}
-        </span>
-      )}
+      {collapsed && <SidebarTooltip label={item.label} />}
     </a>
+  );
+}
+
+/** Hover label for the collapsed rail */
+export function SidebarTooltip({ label }: { label: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-md bg-popover px-2.5 py-1.5 font-sans text-xs font-medium text-popover-foreground opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+    >
+      {label}
+    </span>
   );
 }

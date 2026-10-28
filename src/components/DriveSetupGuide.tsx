@@ -18,6 +18,7 @@ import {
   XIcon as X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { EASE_OUT } from "@/lib/constants";
 
 /** A value the user should type or click verbatim, shown as a mono chip. */
@@ -45,7 +46,7 @@ interface GuideStep {
 
 const STEPS: GuideStep[] = [
   {
-    icon: <Sparkle className="size-5 text-primary" weight="fill" />,
+    icon: <Sparkle className="size-5" weight="fill" />,
     title: "Connect your Google Drive",
     blurb:
       "To let Ckourse read your Drive, Google asks you to create your own free key. It's a one-time setup and your files stay private to you — nobody else can use this key.",
@@ -63,7 +64,7 @@ const STEPS: GuideStep[] = [
     ],
   },
   {
-    icon: <FolderPlus className="size-5 text-primary" weight="bold" />,
+    icon: <FolderPlus className="size-5" weight="bold" />,
     title: "Create a project",
     blurb:
       "A project is just a container for your settings on Google's side. Give it any name you like.",
@@ -87,7 +88,7 @@ const STEPS: GuideStep[] = [
     ],
   },
   {
-    icon: <PlugsConnected className="size-5 text-primary" weight="bold" />,
+    icon: <PlugsConnected className="size-5" weight="bold" />,
     title: "Turn on two services",
     blurb:
       "Tell Google you want to use Drive and its file picker. Open each link below and click the blue Enable button.",
@@ -112,7 +113,7 @@ const STEPS: GuideStep[] = [
     ],
   },
   {
-    icon: <IdentificationBadge className="size-5 text-primary" weight="bold" />,
+    icon: <IdentificationBadge className="size-5" weight="bold" />,
     title: "Set up the sign-in screen",
     blurb:
       "This is the screen you'll see when you connect. You just fill in a couple of fields.",
@@ -140,7 +141,7 @@ const STEPS: GuideStep[] = [
     ],
   },
   {
-    icon: <UserPlus className="size-5 text-primary" weight="bold" />,
+    icon: <UserPlus className="size-5" weight="bold" />,
     title: "Add yourself as a test user",
     blurb: "This tells Google to let you — and only you — use your new key.",
     actions: [
@@ -166,7 +167,7 @@ const STEPS: GuideStep[] = [
     ),
   },
   {
-    icon: <Key className="size-5 text-primary" weight="bold" />,
+    icon: <Key className="size-5" weight="bold" />,
     title: "Get values 1 & 2",
     blurb:
       "Now create the Client ID and Client secret — the first two of your three values.",
@@ -192,7 +193,7 @@ const STEPS: GuideStep[] = [
     note: <>You can reopen the client later if you need to see these again.</>,
   },
   {
-    icon: <LockKey className="size-5 text-primary" weight="bold" />,
+    icon: <LockKey className="size-5" weight="bold" />,
     title: "Get value 3",
     blurb: "Last one: the API key, which powers the folder picker.",
     actions: [
@@ -212,7 +213,7 @@ const STEPS: GuideStep[] = [
     ],
   },
   {
-    icon: <CheckCircle className="size-5 text-primary" weight="fill" />,
+    icon: <CheckCircle className="size-5" weight="fill" />,
     title: "You're all set!",
     blurb:
       "You now have your three values. Close this guide and paste each one into its box below.",
@@ -263,25 +264,10 @@ export function DriveSetupGuide() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5",
-          "text-left font-sans text-sm transition-colors hover:bg-primary/20",
-        )}
-      >
-        <span className="flex items-center gap-2.5">
-          <Question className="size-4 shrink-0 text-primary" weight="bold" />
-          <span>
-            <span className="font-medium text-foreground">
-              First time? Follow the step-by-step guide
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Get your 3 values in ~5 minutes — no tech skills needed
-            </span>
-          </span>
-        </span>
-      </button>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Question className="size-4" />
+        Setup guide
+      </Button>
 
       {open &&
         createPortal(
@@ -294,11 +280,18 @@ export function DriveSetupGuide() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="drive-guide-title"
-              className="relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+              className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-popover shadow-pop"
               style={{ animation: `card-in 250ms ${EASE_OUT} both` }}
             >
               {/* Progress bar */}
-              <div className="h-1 w-full bg-secondary">
+              <div
+                className="h-1 w-full bg-secondary"
+                role="progressbar"
+                aria-label="Guide progress"
+                aria-valuemin={1}
+                aria-valuemax={STEPS.length}
+                aria-valuenow={step + 1}
+              >
                 <div
                   className="h-full bg-primary transition-all duration-300"
                   style={{ width: `${pct}%` }}
@@ -306,26 +299,29 @@ export function DriveSetupGuide() {
               </div>
 
               <div className="max-h-[80vh] overflow-y-auto p-6">
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={close}
-                  className="absolute right-4 top-5 text-muted-foreground transition-colors hover:text-foreground"
+                  className="absolute top-4 right-3"
                   aria-label="Close guide"
+                  title="Close guide"
                 >
                   <X className="size-4" />
-                </button>
+                </Button>
 
                 {/* Header */}
                 <div className="mb-4 flex items-center gap-3 pr-8">
-                  <div className="squircle flex size-10 shrink-0 items-center justify-center bg-primary/15">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground">
                     {current.icon}
                   </div>
                   <div>
-                    <div className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <div className="font-sans text-xs font-medium text-muted-foreground tabular-nums">
                       Step {step + 1} of {STEPS.length}
                     </div>
                     <h3
                       id="drive-guide-title"
-                      className="font-heading text-lg font-bold text-foreground"
+                      className="font-heading text-lg font-semibold text-foreground"
                     >
                       {current.title}
                     </h3>
@@ -345,14 +341,13 @@ export function DriveSetupGuide() {
                         key={action.url}
                         onClick={() => void openUrl(action.url).catch(() => {})}
                         className={cn(
-                          "flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5",
-                          "font-sans text-sm font-medium text-foreground transition-colors hover:bg-primary/20",
+                          "flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3.5 py-2.5 shadow-card",
+                          "font-sans text-sm font-medium text-foreground transition-colors hover:bg-secondary",
                         )}
                       >
                         {action.label}
                         <ArrowSquareOut
-                          className="size-4 shrink-0 text-primary"
-                          weight="bold"
+                          className="size-4 shrink-0 text-muted-foreground"
                         />
                       </button>
                     ))}
@@ -364,7 +359,7 @@ export function DriveSetupGuide() {
                   <ol className="mb-4 flex flex-col gap-2.5">
                     {current.instructions.map((item, i) => (
                       <li key={i} className="flex items-start gap-2.5">
-                        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary font-mono text-[11px] font-bold text-muted-foreground">
+                        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary font-sans text-[11px] font-semibold text-foreground tabular-nums">
                           {i + 1}
                         </span>
                         <span className="font-sans text-sm leading-relaxed text-foreground">
@@ -377,12 +372,12 @@ export function DriveSetupGuide() {
 
                 {/* Note callout */}
                 {current.note && (
-                  <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-info/20 bg-info/10 px-3 py-2.5">
+                  <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-info/30 bg-info/10 px-3 py-2.5">
                     <Warning
                       className="mt-0.5 size-4 shrink-0 text-info"
                       weight="fill"
                     />
-                    <p className="font-sans text-xs leading-relaxed text-muted-foreground">
+                    <p className="font-sans text-xs leading-relaxed text-foreground">
                       {current.note}
                     </p>
                   </div>
@@ -390,42 +385,25 @@ export function DriveSetupGuide() {
 
                 {/* Footer navigation */}
                 <div className="mt-6 flex items-center justify-between">
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={() => setStep((s) => s - 1)}
                     disabled={isFirst}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-lg px-3 py-2 font-sans text-sm font-medium transition-colors",
-                      isFirst
-                        ? "cursor-not-allowed text-muted-foreground/30"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                    )}
                   >
                     <ArrowLeft className="size-4" />
                     Back
-                  </button>
+                  </Button>
 
                   {isLast ? (
-                    <button
-                      onClick={close}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
-                        "transition-colors hover:bg-primary/90",
-                      )}
-                    >
+                    <Button onClick={close}>
                       <CheckCircle className="size-4" weight="bold" />
                       Done
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      onClick={() => setStep((s) => s + 1)}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-sans text-sm font-semibold text-primary-foreground",
-                        "transition-colors hover:bg-primary/90",
-                      )}
-                    >
+                    <Button onClick={() => setStep((s) => s + 1)}>
                       Next
                       <ArrowRight className="size-4" weight="bold" />
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
