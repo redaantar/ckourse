@@ -3,6 +3,7 @@ mod db;
 mod drive_protocol;
 mod google;
 mod parser;
+mod playback;
 mod remote;
 mod remote_protocol;
 mod stream_cache;
@@ -55,6 +56,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            playback::prepare_local_video,
+            playback::cancel_local_video_preparation,
             commands::parse_course_folder,
             commands::import_course,
             commands::get_courses,
