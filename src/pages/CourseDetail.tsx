@@ -5,10 +5,6 @@ import { toast } from "sonner";
 import {
   CheckCircleIcon as CheckCircle,
   ClockIcon as Clock,
-  FileTextIcon as FileText,
-  FilePdfIcon as FilePdf,
-  FileIcon as File,
-  LinkIcon as LinkSimple,
   ArrowLeftIcon as ArrowLeft,
   NotePencilIcon as NotePencil,
   PencilSimpleIcon as PencilSimple,
@@ -31,6 +27,7 @@ import { NotesPanel } from "@/components/course-detail/NotesPanel";
 import { CourseEditPanel } from "@/components/course-detail/CourseEditPanel";
 import { CourseCelebration } from "@/components/course-detail/CourseCelebration";
 import { PdfViewer } from "@/components/course-detail/PdfViewer";
+import { ResourceList } from "@/components/course-detail/ResourceList";
 import { EASE_OUT, SNAPPY } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
 import type { Note, Course, CourseDetail as CourseDetailData, Lesson, Resource, Subtitle } from "@/types";
@@ -87,18 +84,6 @@ function getStatusBadge(status: string) {
 function isRemotePath(path: string): boolean {
   return path.startsWith("srv:") || path.startsWith("gdrive:");
 }
-
-const resourceIcons: Record<string, React.ElementType> = {
-  pdf: FilePdf,
-  document: FileText,
-  text: FileText,
-  link: LinkSimple,
-  file: File,
-  archive: File,
-  code: File,
-  image: File,
-  other: File,
-};
 
 export function CourseDetail({ className }: CourseDetailProps) {
   const { courseId } = useParams<{ courseId: string }>();
@@ -256,16 +241,9 @@ function CourseDetailInner({
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"resources" | "notes">("notes");
   const [openPdf, setOpenPdf] = useState<Resource | null>(null);
-  const courseResources = courseData.resources.filter((r) => r.lessonId == null);
   const lessonResources = activeLesson
     ? courseData.resources.filter((r) => r.lessonId === activeLesson.id)
     : [];
-  // Every other lesson's files, in course order, so attachments are findable
-  // without first playing the lesson they belong to.
-  const otherLessonResources = allLessons
-    .filter((l) => l.id !== activeLesson?.id)
-    .map((l) => ({ lesson: l, resources: courseData.resources.filter((r) => r.lessonId === l.id) }))
-    .filter((g) => g.resources.length > 0);
   const hasResources = courseData.resources.length > 0;
   const [notes, setNotes] = useState<Note[]>([]);
   const lessonNotes = activeLesson
@@ -861,40 +839,11 @@ function CourseDetailInner({
             </div>
 
             {activeTab === "resources" && hasResources && (
-              <div className="flex flex-col gap-4">
-                {lessonResources.length > 0 && (
-                  <ResourceGroup
-                    title="This lesson"
-                    resources={lessonResources}
-                    onOpen={handleOpenResource}
-                    showTitle={courseResources.length > 0}
-                  />
-                )}
-                {courseResources.length > 0 && (
-                  <ResourceGroup
-                    title="Course"
-                    resources={courseResources}
-                    onOpen={handleOpenResource}
-                    showTitle={lessonResources.length > 0 || otherLessonResources.length > 0}
-                  />
-                )}
-                {otherLessonResources.length > 0 && (
-                  <div className="flex flex-col gap-3 border-t border-border pt-3">
-                    <span className="font-sans text-xs font-medium text-muted-foreground">
-                      Other lessons
-                    </span>
-                    {otherLessonResources.map(({ lesson, resources }) => (
-                      <ResourceGroup
-                        key={lesson.id}
-                        title={lesson.title}
-                        resources={resources}
-                        onOpen={handleOpenResource}
-                        showTitle
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ResourceList
+                courseData={courseData}
+                activeLesson={activeLesson ?? undefined}
+                onOpen={handleOpenResource}
+              />
             )}
 
             {activeTab === "notes" && (
@@ -1014,41 +963,6 @@ function CourseDetailInner({
           `}</style>
         </div>
       )}
-    </div>
-  );
-}
-
-interface ResourceGroupProps {
-  title: string;
-  resources: Resource[];
-  onOpen: (resource: Resource) => void;
-  showTitle: boolean;
-}
-
-function ResourceGroup({ title, resources, onOpen, showTitle }: ResourceGroupProps) {
-  return (
-    <div className="flex flex-col gap-2">
-      {showTitle && (
-        <span className="font-sans text-xs font-medium text-muted-foreground">{title}</span>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {resources.map((resource) => {
-          const Icon = resourceIcons[resource.type] || File;
-          return (
-            <button
-              key={resource.id}
-              onClick={() => onOpen(resource)}
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-all duration-150 hover:scale-[1.02] hover:bg-secondary active:scale-[0.98]"
-              style={{ transitionTimingFunction: SNAPPY }}
-            >
-              <Icon className="size-3.5 text-muted-foreground" />
-              <span className="font-sans text-xs font-medium text-foreground">
-                {resource.title}
-              </span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
