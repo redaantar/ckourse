@@ -25,14 +25,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import type { ProgressData, CourseProgress } from "@/types";
 import { getProgressData } from "@/lib/store";
 import { EASE_OUT } from "@/lib/constants";
-import level1 from "@/assets/icons/level_1.svg";
-import level2 from "@/assets/icons/level_2.svg";
-import level3 from "@/assets/icons/level_3.svg";
-import level4 from "@/assets/icons/level_4.svg";
-
-const LEVEL_ICONS: Record<number, string> = { 1: level1, 2: level2, 3: level3, 4: level4 };
-const LEVEL_NAMES: Record<number, string> = { 1: "Beginner", 2: "Explorer", 3: "Achiever", 4: "Master" };
-const LEVEL_THRESHOLDS = [0, 5, 20, 50];
+import { LEVELS, MAX_LEVEL, getLevelFraction, getLevelInfo } from "@/lib/levels";
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -341,7 +334,7 @@ export function Progress({ className }: ProgressProps) {
           {/* Current level header */}
           <div className="mb-5 flex items-center gap-4">
             <img
-              src={LEVEL_ICONS[data.stats.userLevel] ?? LEVEL_ICONS[1]}
+              src={getLevelInfo(data.stats.userLevel).icon}
               alt={`Level ${data.stats.userLevel}`}
               className="size-14 object-contain drop-shadow-[0_0_8px_rgba(200,241,53,0.3)]"
             />
@@ -351,7 +344,7 @@ export function Progress({ className }: ProgressProps) {
                   Level {data.stats.userLevel}
                 </span>
                 <span className="font-sans text-sm font-medium text-primary/70">
-                  {LEVEL_NAMES[data.stats.userLevel] ?? "Beginner"}
+                  {getLevelInfo(data.stats.userLevel).name}
                 </span>
               </div>
               {data.stats.lessonsToNextLevel > 0 ? (
@@ -359,7 +352,7 @@ export function Progress({ className }: ProgressProps) {
                   <span className="font-mono font-medium text-primary">{data.stats.lessonsToNextLevel}</span>
                   {" "}more {data.stats.lessonsToNextLevel === 1 ? "lesson" : "lessons"} to{" "}
                   <span className="font-medium text-foreground">
-                    {LEVEL_NAMES[data.stats.userLevel + 1]}
+                    {getLevelInfo(data.stats.userLevel + 1).name}
                   </span>
                 </p>
               ) : (
@@ -381,14 +374,10 @@ export function Progress({ className }: ProgressProps) {
                 top: 45,
                 width: (() => {
                   const lvl = data.stats.userLevel;
-                  if (lvl >= 4) return "calc(100% - 48px)";
-                  // Each segment is 1/3 of the track
-                  const segPct = 100 / 3;
-                  const rangeStart = LEVEL_THRESHOLDS[lvl - 1];
-                  const rangeEnd = LEVEL_THRESHOLDS[lvl];
-                  const total = rangeEnd - rangeStart;
-                  const done = total - data.stats.lessonsToNextLevel;
-                  const withinSeg = done / total;
+                  if (lvl >= MAX_LEVEL) return "calc(100% - 48px)";
+                  // Each segment is an equal share of the track
+                  const segPct = 100 / (MAX_LEVEL - 1);
+                  const withinSeg = getLevelFraction(lvl, data.stats.lessonsToNextLevel);
                   const fullPct = (lvl - 1) * segPct + withinSeg * segPct;
                   return `calc(${fullPct}% - ${48 - (fullPct / 100) * 48}px)`;
                 })(),
@@ -397,13 +386,13 @@ export function Progress({ className }: ProgressProps) {
 
             {/* Level nodes */}
             <div className="relative z-10 flex w-full items-center justify-between">
-              {[1, 2, 3, 4].map((lv) => {
+              {LEVELS.map(({ level: lv, name, icon }) => {
                 const reached = lv <= data.stats.userLevel;
                 const isCurrent = lv === data.stats.userLevel;
                 return (
                   <div key={lv} className="flex flex-col items-center">
                     <img
-                      src={LEVEL_ICONS[lv]}
+                      src={icon}
                       alt={`Level ${lv}`}
                       className={cn(
                         "size-9 object-contain transition-all",
@@ -435,7 +424,7 @@ export function Progress({ className }: ProgressProps) {
                         "font-sans text-[9px]",
                         isCurrent ? "text-primary/70" : "text-muted-foreground/30",
                       )}>
-                        {LEVEL_NAMES[lv]}
+                        {name}
                       </div>
                     </div>
                   </div>
