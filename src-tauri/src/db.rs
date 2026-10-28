@@ -972,14 +972,18 @@ pub struct DashboardStats {
     pub lessons_to_next_level: i64, // 0 if max level
 }
 
+// Completed lessons needed to reach each level (index 0 = level 1).
+// Keep in sync with LEVELS in src/lib/levels.ts.
+const LEVEL_THRESHOLDS: [i64; 4] = [0, 25, 150, 500];
+
 fn calculate_level(completed: i64) -> (i64, i64) {
     // Returns (level, lessons_to_next_level)
-    match completed {
-        0..=4 => (1, 5 - completed),
-        5..=19 => (2, 20 - completed),
-        20..=49 => (3, 50 - completed),
-        _ => (4, 0),
-    }
+    let reached = LEVEL_THRESHOLDS.iter().filter(|&&t| completed >= t).count();
+    let level = reached.max(1);
+    let to_next = LEVEL_THRESHOLDS
+        .get(level)
+        .map_or(0, |&next| next - completed);
+    (level as i64, to_next)
 }
 
 pub fn get_dashboard_stats(conn: &Connection) -> SqlResult<DashboardStats> {
@@ -1584,4 +1588,21 @@ pub fn count_courses_for_server(conn: &Connection, id: &str) -> SqlResult<i64> {
         params![pattern],
         |row| row.get(0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calculate_level;
+
+    #[test]
+    fn level_boundaries() {
+        assert_eq!(calculate_level(0), (1, 25));
+        assert_eq!(calculate_level(24), (1, 1));
+        assert_eq!(calculate_level(25), (2, 125));
+        assert_eq!(calculate_level(149), (2, 1));
+        assert_eq!(calculate_level(150), (3, 350));
+        assert_eq!(calculate_level(499), (3, 1));
+        assert_eq!(calculate_level(500), (4, 0));
+        assert_eq!(calculate_level(3000), (4, 0));
+    }
 }
