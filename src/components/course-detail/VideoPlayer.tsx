@@ -351,19 +351,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   useEffect(() => {
     if (!needsPreparation || !lesson) return;
     let cancelled = false;
+    let settled = false;
     const path = lesson.videoPath;
+    const requestId = crypto.randomUUID();
     setPrepared(null);
     setLoadError(null);
     setIsBuffering(true);
-    invoke<string>("prepare_local_video", { path }).then((playbackPath) => {
-      if (!cancelled) setPrepared({ path, src: convertFileSrc(playbackPath, "stream") });
-    }).catch((error: unknown) => {
-      if (!cancelled) {
-        setIsBuffering(false);
-        setLoadError(String(error));
+    invoke<string>("prepare_local_video", { path, requestId })
+      .then((playbackPath) => {
+        if (!cancelled) setPrepared({ path, src: convertFileSrc(playbackPath, "stream") });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setIsBuffering(false);
+          setLoadError(String(error));
+        }
+      })
+      .finally(() => {
+        settled = true;
+      });
+    return () => {
+      cancelled = true;
+      // Stop the encode (or drop it from the queue) so switching lessons
+      // doesn't leave ffmpeg working on a video nobody is waiting for.
+      if (!settled) {
+        invoke("cancel_local_video_preparation", { requestId }).catch(() => {});
       }
-    });
-    return () => { cancelled = true; };
+    };
   }, [lesson?.id, lesson?.videoPath, needsPreparation, prepareAttempt]);
 
   // Reset state when lesson changes

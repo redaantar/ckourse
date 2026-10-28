@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ckourse",
-  "version": "1.2.1-ts.1",
+  "version": "1.2.0",
   "identifier": "com.ckourse.app",
   "build": {
     "beforeDevCommand": "npm run dev",

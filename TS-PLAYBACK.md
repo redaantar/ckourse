@@ -17,11 +17,13 @@ ready. This is automatic background preparation, not direct TS decoding.
 The source is opened for reading only. Nothing is created in the course folder;
 read-only external volumes work as well as local folders. Cache files are keyed
 by canonical path, size, modification time and pipeline version, reused on later
-plays, and atomically published. Concurrent requests share serialized preparation;
-failed temporary files are removed. A changed source gets a new cache entry.
+plays, and atomically published. Requests are prepared one at a time; leaving a
+lesson cancels its preparation and stops ffmpeg. Failed or abandoned temporary
+files are removed. A changed source gets a new cache entry.
 Do not edit a source during preparation. Disk space is needed on the Mac for the
-prepared MP4; completed cache entries persist until deleted. To reclaim space,
-quit ckourse and delete the `playback` cache directory. Notes/progress are in
+prepared MP4. The cache is capped at 10 GB and the least recently played videos
+are evicted first. To reclaim space sooner, quit ckourse and delete the
+`playback` cache directory. Notes/progress are in
 Application Support, separate from this disposable cache.
 
 Seeking from a timestamp during preparation is queued until metadata is ready.
@@ -39,7 +41,7 @@ npm ci
 npm run build:mac-arm64
 ```
 
-This builds `1.2.1-ts.1` for `aarch64-apple-darwin` with native ffmpeg and ffprobe,
+This builds the app for `aarch64-apple-darwin` with native ffmpeg and ffprobe,
 checks their architecture, and emits an app and DMG under
 `src-tauri/target/aarch64-apple-darwin/release/bundle/`.
 The local configuration uses an ad-hoc signature and omits updater artifacts;

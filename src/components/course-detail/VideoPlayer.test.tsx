@@ -25,7 +25,7 @@ describe("local TS preparation", () => {
     const view = render(<MemoryRouter><VideoPlayer ref={ref} lesson={lesson(1)} subtitles={[]} hasNext={false} initialTime={2.25} autoPlay onTimeUpdate={onTimeUpdate} /></MemoryRouter>);
     const video = view.container.querySelector("video")!;
     expect(video.getAttribute("src")).toBeNull();
-    expect(invoke).toHaveBeenCalledWith("prepare_local_video", { path: lesson(1).videoPath });
+    expect(invoke).toHaveBeenCalledWith("prepare_local_video", { path: lesson(1).videoPath, requestId: expect.any(String) });
     await act(async () => pending.resolve("/cache/compatible.mp4"));
     expect(video.src).toContain("compatible.mp4");
     Object.defineProperty(video, "duration", { configurable: true, value: 4 });
@@ -60,9 +60,12 @@ describe("local TS preparation", () => {
   });
   it("ignores a stale preparation after changing lessons", async () => {
     const first = deferred(), second = deferred();
-    invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const queue = [first.promise, second.promise];
+    invoke.mockImplementation((command: string) => command === "prepare_local_video" ? queue.shift() : Promise.resolve());
     const player = (id: number) => <MemoryRouter><VideoPlayer lesson={lesson(id)} subtitles={[]} hasNext={false} /></MemoryRouter>;
     const view = render(player(1)); view.rerender(player(2));
+    const firstRequest = invoke.mock.calls[0][1].requestId;
+    expect(invoke).toHaveBeenCalledWith("cancel_local_video_preparation", { requestId: firstRequest });
     await act(async () => first.resolve("/cache/first.mp4"));
     expect(view.container.querySelector("video")!.getAttribute("src")).toBeNull();
     await act(async () => second.resolve("/cache/second.mp4"));

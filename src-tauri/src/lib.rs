@@ -57,6 +57,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             playback::prepare_local_video,
+            playback::cancel_local_video_preparation,
             commands::parse_course_folder,
             commands::import_course,
             commands::get_courses,

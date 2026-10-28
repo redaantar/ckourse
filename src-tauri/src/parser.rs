@@ -1291,12 +1291,18 @@ pub fn find_bundled_bin(bin: &str) -> Option<PathBuf> {
 
     // Tauri strips the target triple when copying externalBin into the app.
     // Keep old names as a fallback for existing developer layouts.
-    let names = [bin.to_string(), format!("{bin}.exe"),
+    let names = [
+        bin.to_string(),
+        format!("{bin}.exe"),
         format!("{bin}-aarch64-apple-darwin"),
         format!("{bin}-x86_64-apple-darwin"),
         format!("{bin}-universal-apple-darwin"),
-        format!("{bin}-x86_64-pc-windows-msvc.exe")];
-    names.iter().map(|name| dir.join(name)).find(|path| path.is_file())
+        format!("{bin}-x86_64-pc-windows-msvc.exe"),
+    ];
+    names
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.is_file())
 }
 
 fn probe_embedded_subtitles(path: &Path, ffprobe_bin: &str) -> Vec<ParsedSubtitle> {
